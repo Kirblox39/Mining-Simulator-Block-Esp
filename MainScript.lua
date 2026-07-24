@@ -1,4 +1,4 @@
-local blocksFolder = workspace:WaitForChild("Blocks", 15)
+blocksFolder = workspace:WaitForChild("Blocks", 15)
 if not blocksFolder then return end
 
 local vim = game:GetService("VirtualInputManager")
