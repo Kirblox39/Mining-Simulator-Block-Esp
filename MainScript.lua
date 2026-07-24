@@ -246,35 +246,107 @@ task.spawn(function()
                 -- Если блок найден, летим и копаем его
                 digBlock(targetFound)
             else
-                -- 2. Если блока НЕТ, проверяем, имеет ли смысл копать ниже!
-                local character = localPlayer.Character
-                local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+-- Функция безопасной добычи (зависание сбоку от блока)
+local function digBlock(blockModel)
+    if not blockModel then return end
+    local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
+    if not targetPart then return end
+    
+    local character = localPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    
+    if rootPart and humanoid then
+        -- 1. Полностью обездвиживаем игрока в воздухе (иммунитет к падению и флингам)
+        rootPart.Anchored = true
+        rootPart.Velocity = Vector3.new(0, 0, 0)
+        
+        -- 2. Телепортируем СБОКУ от блока (смещаем на 4 студа вбок по X и приподнимаем на 1 студ)
+        -- Никакого застревания в текстурах! Позиция абсолютно чистая и свободная от блоков.
+        rootPart.CFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
+        
+        -- Экипируем кирку из инвентаря
+        local tool = character:FindFirstChildOfClass("Tool")
+        if not tool then
+            local backpackTool = localPlayer.Backpack:FindFirstChildOfClass("Tool")
+            if backpackTool then
+                humanoid:EquipTool(backpackTool)
+                tool = backpackTool
+            end
+        end
+        
+        -- 3. Безопасный авто-клик без участия экрана
+        if tool then
+            while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
+                -- На всякий случай жестко удерживаем позицию сбоку каждый цикл (защита от лагов античита)
+                rootPart.CFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
                 
-                if rootPart then
-                    -- Рассчитываем текущий слой (примерная логика для Mining Simulator)
-                    -- Допустим, высота спавна 0 слоя = 0. Чем ниже копаем, тем меньше Y.
-                    local startHeight = 50 -- Высота поверхности (поменяй под свою игру)
-                    local blockSize = 6    -- Высота одного блока в студах
-                    local currentLayer = math.floor((startHeight - rootPart.Position.Y) / blockSize)
-                    
-                    -- Защита: в Home World максимальная глубина руд (например, Rainbowite) — 9+ слой
-                    -- Если игрок опустился ниже 12-15 слоя, а руды всё ещё нет, значит её просто нет на карте
-                    if currentLayer < 15 then 
-                        digStraightDown() -- Копаем ниже, мы ещё в пределах шахты
-                    else
-                        -- МЫ СЛИШКОМ ГЛУБОКО ИЛИ РУДЫ НЕТ В ЭТОМ МИРЕ!
-                        isAutoMining = false
-                        autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-                        autoMineBtn.Text = "Auto-Mine: OFF (Max Depth / Not Found)"
-                        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                        warn("Авто-фарм остановлен: руда не найдена в этой зоне на доступной глубине.")
-                    end
+                tool:Activate() 
+                task.wait(0.1) 
+            end
+        end
+        
+        -- Отпускаем заморозку, когда блок сломался
+        rootPart.Anchored = false
+    end
+end
+
+-- Функция умного спуска (копает любой блок строго под собой)
+local function digStraightDown()
+    local character = localPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Include
+    raycastParams.FilterDescendantsInstances = {blocksFolder}
+    
+    -- Стреляем лучиком вниз, чтобы найти преграду под ногами
+    local raycastResult = workspace:Raycast(rootPart.Position, Vector3.new(0, -6, 0), raycastParams)
+    
+    if raycastResult and raycastResult.Instance then
+        local blockModel = raycastResult.Instance.Parent
+        if blockModel and blockModel:IsA("Model") then
+            -- Снимаем анкер перед копанием вниз, чтобы плавно опускаться
+            rootPart.Anchored = false
+            digBlock(blockModel)
+        end
+    else
+        -- Если под ногами пустота, временно держим игрока в воздухе, пока не спавнится блок
+        rootPart.Anchored = true
+        rootPart.Velocity = Vector3.new(0, 0, 0)
+    end
+end
+
+-- Главный цикл авто-фарма
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if isAutoMining then
+            local targetFound = nil
+            
+            for _, child in ipairs(blocksFolder:GetChildren()) do
+                if child:IsA("Model") and trackedBlocks[child.Name:lower()] then
+                    targetFound = child
+                    break
                 end
+            end
+            
+            if targetFound then
+                digBlock(targetFound)
+            else
+                digStraightDown()
+            end
+        else
+            -- Гарантируем, что если авто-фарм выключили, персонаж не останется забагованным в воздухе
+            local character = localPlayer.Character
+            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+            if rootPart and rootPart.Anchored then
+                rootPart.Anchored = false
             end
         end
     end
 end)
-
 
 local function clearOldESP()
     for _, child in ipairs(blocksFolder:GetChildren()) do
@@ -316,6 +388,7 @@ local function updateESP()
     for _, child in ipairs(blocksFolder:GetChildren()) do createESP(child) end
     connection = blocksFolder.ChildAdded:Connect(createESP)
 end
+
 -- Логика сканера карты с поиском
 local function refreshScanner()
     for _, child in ipairs(scanScroll:GetChildren()) do
