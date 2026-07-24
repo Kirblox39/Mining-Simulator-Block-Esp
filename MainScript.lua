@@ -1,5 +1,23 @@
-blocksFolder = workspace:WaitForChild("Blocks", 15)
-if not blocksFolder then return end
+-- Надежный поиск папки Blocks для мобильных читов
+shared.BlocksFolder = workspace:FindFirstChild("Blocks") or workspace:FindFirstChild("blocks")
+
+if not shared.BlocksFolder then
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child.Name:lower() == "blocks" then
+            shared.BlocksFolder = child
+            break
+        end
+    end
+end
+
+-- Если папка все еще загружается игрой, подождем ее секунду
+if not shared.BlocksFolder then
+    task.wait(1)
+    shared.BlocksFolder = workspace:FindFirstChild("Blocks") or workspace:FindFirstChild("blocks")
+end
+
+-- Создаем внутреннюю короткую переменную для совместимости с остальным кодом
+local blocksFolder = shared.BlocksFolder
 
 local vim = game:GetService("VirtualInputManager")
 local players = game:GetService("Players")
