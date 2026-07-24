@@ -2,7 +2,7 @@ local blocksFolder = workspace:WaitForChild("Blocks", 15)
 if not blocksFolder then return end
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BlockTrackerUltimateESP"
+screenGui.Name = "BlockTrackerOptimized"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = game:GetService("CoreGui") or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
@@ -19,26 +19,42 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
 
 -- Панель сканера (Scanner Frame)
 local scanFrame = Instance.new("Frame")
-scanFrame.Size = UDim2.new(0, 200, 0, 240)
-scanFrame.Position = UDim2.new(1, 10, 0, 0) -- Справа от главного окна
+scanFrame.Size = UDim2.new(0, 220, 0, 240)
+scanFrame.Position = UDim2.new(1, 10, 0, 0)
 scanFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 scanFrame.BorderSizePixel = 0
 scanFrame.Visible = false
 scanFrame.Parent = mainFrame
 Instance.new("UICorner", scanFrame).CornerRadius = UDim.new(0, 10)
 
-local scanTitle = Instance.new("TextLabel")
-scanTitle.Size = UDim2.new(1, 0, 0, 35)
-scanTitle.Text = "Blocks Map Scan"
-scanTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
-scanTitle.BackgroundTransparency = 1
-scanTitle.Font = Enum.Font.SourceSansBold
-scanTitle.TextSize = 14
-scanTitle.Parent = scanFrame
+-- Поиск внутри сканера
+local searchBox = Instance.new("TextBox")
+searchBox.Size = UDim2.new(1, -10, 0, 25)
+searchBox.Position = UDim2.new(0, 5, 0, 5)
+searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+searchBox.Text = ""
+searchBox.PlaceholderText = "Search block..."
+searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchBox.TextSize = 13
+searchBox.ClearTextOnFocus = false
+searchBox.Parent = scanFrame
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 4)
+
+-- Кнопка Обновить скан вручную
+local refreshScanBtn = Instance.new("TextButton")
+refreshScanBtn.Size = UDim2.new(1, -10, 0, 25)
+refreshScanBtn.Position = UDim2.new(0, 5, 0, 35)
+refreshScanBtn.BackgroundColor3 = Color3.fromRGB(45, 75, 125)
+refreshScanBtn.Text = "🔄 Refresh List"
+refreshScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+refreshScanBtn.Font = Enum.Font.SourceSansBold
+refreshScanBtn.TextSize = 13
+refreshScanBtn.Parent = scanFrame
+Instance.new("UICorner", refreshScanBtn).CornerRadius = UDim.new(0, 4)
 
 local scanScroll = Instance.new("ScrollingFrame")
-scanScroll.Size = UDim2.new(1, -10, 1, -45)
-scanScroll.Position = UDim2.new(0, 5, 0, 35)
+scanScroll.Size = UDim2.new(1, -10, 1, -75)
+scanScroll.Position = UDim2.new(0, 5, 0, 65)
 scanScroll.BackgroundTransparency = 1
 scanScroll.BorderSizePixel = 0
 scanScroll.ScrollBarThickness = 4
@@ -91,7 +107,6 @@ uiListLayout.Parent = scrollingFrame
 uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 uiListLayout.Padding = UDim.new(0, 5)
 
--- Кнопка "+ Add"
 local addBtn = Instance.new("TextButton")
 addBtn.Size = UDim2.new(0, 155, 0, 30)
 addBtn.Position = UDim2.new(0, 10, 1, -35)
@@ -103,7 +118,6 @@ addBtn.TextSize = 14
 addBtn.Parent = contentFrame
 Instance.new("UICorner", addBtn).CornerRadius = UDim.new(0, 5)
 
--- Кнопка "🔍 Scan Blocks"
 local scanToggleBtn = Instance.new("TextButton")
 scanToggleBtn.Size = UDim2.new(0, 155, 0, 30)
 scanToggleBtn.Position = UDim2.new(0, 175, 0, 170)
@@ -116,12 +130,11 @@ scanToggleBtn.Parent = contentFrame
 Instance.new("UICorner", scanToggleBtn).CornerRadius = UDim.new(0, 5)
 
 local trackedBlocks = {} 
-local activeBillboards = {} 
+local rowDistanceLabels = {} -- Список для обновления дистанции прямо в интерфейсе меню
 local connection = nil
 local createBlockRowGlobal = nil 
 
 local function clearOldESP()
-    activeBillboards = {}
     for _, child in ipairs(blocksFolder:GetChildren()) do
         local colorPart = child:FindFirstChild("ColorPart")
         if colorPart then
@@ -139,30 +152,17 @@ local function createESP(child)
             if colorPart and not colorPart:FindFirstChild("UltimateBlockBillboard") then
                 local billboard = Instance.new("BillboardGui")
                 billboard.Name = "UltimateBlockBillboard"
-                billboard.Size = UDim2.new(0, 60, 0, 60)
+                billboard.Size = UDim2.new(0, 14, 0, 14)
                 billboard.AlwaysOnTop = true
                 billboard.MaxDistance = math.huge
                 
                 local point = Instance.new("Frame")
-                point.Size = UDim2.new(0, 12, 0, 12)
-                point.Position = UDim2.new(0.5, -6, 0.5, -6)
+                point.Size = UDim2.new(1, 0, 1, 0)
                 point.BackgroundColor3 = data.color
                 Instance.new("UICorner", point).CornerRadius = UDim.new(1, 0)
                 point.Parent = billboard
                 
-                local distLabel = Instance.new("TextLabel")
-                distLabel.Size = UDim2.new(2, 0, 0, 20)
-                distLabel.Position = UDim2.new(-0.5, 0, -0.5, -8)
-                distLabel.BackgroundTransparency = 1
-                distLabel.Text = ""
-                distLabel.TextColor3 = data.color
-                distLabel.TextStrokeTransparency = 0
-                distLabel.Font = Enum.Font.SourceSansBold
-                distLabel.TextSize = 13
-                distLabel.Parent = billboard
-                
                 billboard.Parent = colorPart
-                table.insert(activeBillboards, {gui = distLabel, part = colorPart})
             end
         end
     end
@@ -175,38 +175,49 @@ local function updateESP()
     connection = blocksFolder.ChildAdded:Connect(createESP)
 end
 
--- Надежный трекер дистанции через текущую камеру (всегда работает)
+-- Обновление дистанции прямо в тексте строк UI (не лагает)
 game:GetService("RunService").RenderStepped:Connect(function()
     local camera = workspace.CurrentCamera
     if not camera then return end
     local camPos = camera.CFrame.Position
     
-    for i = #activeBillboards, 1, -1 do
-        local item = activeBillboards[i]
-        if item.part and item.part.Parent and item.gui and item.gui.Parent then
-            local distance = (camPos - item.part.Position).Magnitude
-            if distance < 600 then
-                item.gui.Text = string.format("%d m", math.floor(distance))
-                item.gui.Visible = true
+    for lowerName, label in pairs(rowDistanceLabels) do
+        if label and label.Parent then
+            local closestDist = math.huge
+            for _, child in ipairs(blocksFolder:GetChildren()) do
+                if child.Name:lower() == lowerName then
+                    local cp = child:FindFirstChild("ColorPart")
+                    if cp then
+                        local dist = (camPos - cp.Position).Magnitude
+                        if dist < closestDist then closestDist = dist end
+                    end
+                end
+            end
+            if closestDist < math.huge then
+                label.Text = string.format("[%d m]", math.floor(closestDist))
             else
-                item.gui.Visible = false
+                label.Text = "[None]"
             end
         else
-            table.remove(activeBillboards, i)
+            rowDistanceLabels[lowerName] = nil
         end
     end
 end)
 
--- Логика обновления меню сканера карты
+-- Логика сканера карты с поиском
 local function refreshScanner()
     for _, child in ipairs(scanScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
     
     local counts = {}
+    local searchText = searchBox.Text:lower()
+    
     for _, child in ipairs(blocksFolder:GetChildren()) do
         if child:IsA("Model") then
-            counts[child.Name] = (counts[child.Name] or 0) + 1
+            if searchText == "" or string.find(child.Name:lower(), searchText) then
+                counts[child.Name] = (counts[child.Name] or 0) + 1
+            end
         end
     end
     
@@ -230,23 +241,20 @@ local function refreshScanner()
         
         clickBtn.MouseButton1Click:Connect(function()
             if createBlockRowGlobal then
-                local r = math.random(50, 255)
-                local g = math.random(50, 255)
-                local b = math.random(50, 255)
-                createBlockRowGlobal(blockName, r, g, b)
+                createBlockRowGlobal(blockName, math.random(50,255), math.random(50,255), math.random(50,255))
             end
         end)
     end
     scanScroll.CanvasSize = UDim2.new(0, 0, 0, scanListLayout.AbsoluteContentSize.Y + 5)
 end
 
+refreshScanBtn.MouseButton1Click:Connect(refreshScanner)
+searchBox:GetPropertyChangedSignal("Text"):Connect(refreshScanner)
+
 scanToggleBtn.MouseButton1Click:Connect(function()
     scanFrame.Visible = not scanFrame.Visible
     if scanFrame.Visible then refreshScanner() end
 end)
-
-blocksFolder.ChildAdded:Connect(function() if scanFrame.Visible then refreshScanner() end end)
-blocksFolder.ChildRemoved:Connect(function() if scanFrame.Visible then refreshScanner() end end)
 
 uiListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y + 10)
