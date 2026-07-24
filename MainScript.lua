@@ -153,7 +153,16 @@ local trackedBlocks = {}
 local isAutoMining = false
 local connection = nil
 local createBlockRowGlobal = nil 
--- Функция симуляции копания конкретного блока
+local runService = game:GetService("RunService")
+
+-- Создаем скрытую локальную платформу, чтобы игрок никогда не падал в бездну
+local antiFallPart = Instance.new("Part")
+antiFallPart.Size = Vector3.new(5, 1, 5)
+antiFallPart.Anchored = true
+antiFallPart.Transparency = 1 -- Полностью невидимая
+antiFallPart.Parent = workspace
+
+-- Функция безопасной добычи без кликов по экрану
 local function digBlock(blockModel)
     if not blockModel then return end
     local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
@@ -161,21 +170,39 @@ local function digBlock(blockModel)
     
     local character = localPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    if rootPart then
-        rootPart.CFrame = targetPart.CFrame * CFrame.new(0, 4, 0) -- Встаем над блоком
-    end
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
-    local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
-    if onScreen then
-        vim:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 1)
-        while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
-            task.wait(0.05)
+    if rootPart and humanoid then
+        -- 1. Безопасно перемещаем платформу под ноги, а игрока над блоком
+        antiFallPart.CFrame = targetPart.CFrame * CFrame.new(0, 3.5, 0)
+        rootPart.CFrame = targetPart.CFrame * CFrame.new(0, 5, 0)
+        rootPart.Velocity = Vector3.new(0, 0, 0) -- Обнуляем скорость падения
+        
+        -- 2. Экипируем кирку/инструмент из инвентаря, если она не в руках
+        local tool = character:FindFirstChildOfClass("Tool")
+        if not tool then
+            local backpackTool = localPlayer.Backpack:FindFirstChildOfClass("Tool")
+            if backpackTool then
+                humanoid:EquipTool(backpackTool)
+                tool = backpackTool
+            end
         end
-        vim:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 1)
+        
+        -- 3. Копаем напрямую через активацию инструмента (ОБХОД КЛИКОВ ПО ЭКРАНУ!)
+        if tool then
+            -- Запускаем непрерывные удары, пока блок не исчезнет
+            while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
+                tool:Activate() -- Активирует кирку напрямую в коде игры, не трогая экран и GUI
+                task.wait(0.1)  -- Частота ударов кирки
+                
+                -- Удерживаем платформу под ногами во время копания
+                antiFallPart.CFrame = targetPart.CFrame * CFrame.new(0, 3.5, 0)
+            end
+        end
     end
 end
 
--- Функция умного спуска (копает любой блок строго под собой)
+-- Функция умного спуска (копает строго под себя)
 local function digStraightDown()
     local character = localPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
@@ -185,14 +212,18 @@ local function digStraightDown()
     raycastParams.FilterType = Enum.RaycastFilterType.Include
     raycastParams.FilterDescendantsInstances = {blocksFolder}
     
-    -- Стреляем лучом из центра персонажа вниз на 10 студов
-    local raycastResult = workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), raycastParams)
+    -- Стреляем лучом строго вниз из ног игрока
+    local raycastResult = workspace:Raycast(rootPart.Position, Vector3.new(0, -6, 0), raycastParams)
     
     if raycastResult and raycastResult.Instance then
         local blockModel = raycastResult.Instance.Parent
         if blockModel and blockModel:IsA("Model") then
             digBlock(blockModel)
         end
+    else
+        -- Если под ногами временно пусто (блок удалился, а новый не заспавнился),
+        -- удерживаем невидимую платформу под игроком, чтобы он не улетел вниз
+        antiFallPart.CFrame = rootPart.CFrame * CFrame.new(0, -3.5, 0)
     end
 end
 
