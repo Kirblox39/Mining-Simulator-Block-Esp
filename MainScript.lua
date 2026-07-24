@@ -1,6 +1,5 @@
--- Надежный поиск папки Blocks для мобильных читов
+-- 1. ГЛОБАЛЬНЫЙ И БЕЗОПАСНЫЙ ПОИСК ПАПКИ С БЛОКАМИ
 shared.BlocksFolder = workspace:FindFirstChild("Blocks") or workspace:FindFirstChild("blocks")
-
 if not shared.BlocksFolder then
     for _, child in ipairs(workspace:GetChildren()) do
         if child.Name:lower() == "blocks" then
@@ -9,27 +8,84 @@ if not shared.BlocksFolder then
         end
     end
 end
-
--- Если папка все еще загружается игрой, подождем ее секунду
 if not shared.BlocksFolder then
     task.wait(1)
     shared.BlocksFolder = workspace:FindFirstChild("Blocks") or workspace:FindFirstChild("blocks")
 end
 
--- Создаем внутреннюю короткую переменную для совместимости с остальным кодом
 local blocksFolder = shared.BlocksFolder
-
 local vim = game:GetService("VirtualInputManager")
 local players = game:GetService("Players")
 local localPlayer = players.LocalPlayer
 local camera = workspace.CurrentCamera
 
+-- 2. ТАБЛИЦА МИРОВ, СЛОЕВ И ДИАПАЗОНОВ СПАВНА РУД
+local worldData = {
+    ["Home World"] = {
+        startHeight = 50, -- Начальная высота поверхности мира (в студах)
+        layerSize = 6,    -- Высота одного слоя/блока (в студах)
+        maxLayer = 12,    -- Максимальная глубина шахты в этом мире
+        ores = {
+            ["fossils"] = {min = 2, max = 12},
+            ["dinosaur bones"] = {min = 2, max = 12},
+            ["coal"] = {min = 3, max = 12},
+            ["copper"] = {min = 3, max = 12},
+            ["silver"] = {min = 4, max = 12},
+            ["quartz"] = {min = 4, max = 12},
+            ["skeleton stone"] = {min = 4, max = 12},
+            ["gold"] = {min = 5, max = 12},
+            ["pezzottaite"] = {min = 5, max = 12},
+            ["obsidian"] = {min = 6, max = 12},
+            ["emerald"] = {min = 6, max = 12},
+            ["ruby"] = {min = 6, max = 12},
+            ["lavastone"] = {min = 6, max = 12},
+            ["sapphire"] = {min = 6, max = 12},
+            ["glowstone"] = {min = 6, max = 12},
+            ["uranium"] = {min = 6, max = 12},
+            ["platinum"] = {min = 6, max = 12},
+            ["lapis"] = {min = 6, max = 12},
+            ["krixanium"] = {min = 6, max = 12},
+            ["red rock"] = {min = 6, max = 12},
+            ["dravite"] = {min = 6, max = 12},
+            ["diamond"] = {min = 7, max = 12},
+            ["unobtainium"] = {min = 7, max = 12},
+            ["mythic stone"] = {min = 7, max = 12},
+            ["legendary stone"] = {min = 7, max = 12},
+            ["breadstone"] = {min = 8, max = 12},
+            ["shadow stone"] = {min = 9, max = 12},
+            ["illuminite"] = {min = 9, max = 12},
+            ["rainbowite"] = {min = 9, max = 12},
+            ["wooden chest"] = {min = 1, max = 12},
+            ["silver chest"] = {min = 3, max = 12},
+            ["golden chest"] = {min = 4, max = 12},
+            ["magical chest"] = {min = 5, max = 12},
+            ["mythical chest"] = {min = 5, max = 12},
+            ["unobtainable chest"] = {min = 6, max = 12},
+            ["shadow chest"] = {min = 6, max = 12},
+            ["light chest"] = {min = 9, max = 12},
+            ["token chest"] = {min = 10, max = 12}
+        }
+    },
+    ["Toy Land"] = {
+        startHeight = 40,
+        layerSize = 6,
+        maxLayer = 8,
+        ores = {
+            ["plastic"] = {min = 1, max = 6},
+            ["toy"] = {min = 1, max = 6},
+            ["teddybear"] = {min = 1, max = 6},
+            ["block chest"] = {min = 1, max = 6}
+        }
+    }
+    -- Сюда мы добавим остальные 9 миров по такой же схеме!
+}
+
+-- 3. СОЗДАНИЕ ГЛАВНОГО ИНТЕРФЕЙСА (GUI)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BlockTrackerAutoFarmGUI"
+screenGui.Name = "UltimateMiningHub"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = game:GetService("CoreGui") or localPlayer:WaitForChild("PlayerGui")
 
--- Главная панель (расширена для кнопки авто-фарма)
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 350, 0, 280)
 mainFrame.Position = UDim2.new(0.1, 0, 0.3, 0)
@@ -40,7 +96,6 @@ mainFrame.Draggable = true
 mainFrame.Parent = screenGui
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
 
--- Панель сканера (Scanner Frame)
 local scanFrame = Instance.new("Frame")
 scanFrame.Size = UDim2.new(0, 220, 0, 280)
 scanFrame.Position = UDim2.new(1, 10, 0, 0)
@@ -50,7 +105,6 @@ scanFrame.Visible = false
 scanFrame.Parent = mainFrame
 Instance.new("UICorner", scanFrame).CornerRadius = UDim.new(0, 10)
 
--- Поиск внутри сканера
 local searchBox = Instance.new("TextBox")
 searchBox.Size = UDim2.new(1, -10, 0, 25)
 searchBox.Position = UDim2.new(0, 5, 0, 5)
@@ -63,7 +117,6 @@ searchBox.ClearTextOnFocus = false
 searchBox.Parent = scanFrame
 Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 4)
 
--- Кнопка Обновить скан
 local refreshScanBtn = Instance.new("TextButton")
 refreshScanBtn.Size = UDim2.new(1, -10, 0, 25)
 refreshScanBtn.Position = UDim2.new(0, 5, 0, 35)
@@ -91,7 +144,7 @@ scanListLayout.Padding = UDim.new(0, 3)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 35)
 title.Position = UDim2.new(0, 10, 0, 0)
-title.Text = "Block Tracker & Auto-Mine"
+title.Text = "Pro Mining Simulator HUB"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.BackgroundTransparency = 1
@@ -117,7 +170,7 @@ contentFrame.BackgroundTransparency = 1
 contentFrame.Parent = mainFrame
 
 local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(1, -10, 1, -85) -- Оставили место снизу для двух кнопок
+scrollingFrame.Size = UDim2.new(1, -10, 1, -85)
 scrollingFrame.Position = UDim2.new(0, 5, 0, 5)
 scrollingFrame.BackgroundTransparency = 1
 scrollingFrame.BorderSizePixel = 0
@@ -130,7 +183,6 @@ uiListLayout.Parent = scrollingFrame
 uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 uiListLayout.Padding = UDim.new(0, 5)
 
--- Кнопка "+ Add Block"
 local addBtn = Instance.new("TextButton")
 addBtn.Size = UDim2.new(0, 155, 0, 30)
 addBtn.Position = UDim2.new(0, 10, 1, -75)
@@ -142,7 +194,6 @@ addBtn.TextSize = 14
 addBtn.Parent = contentFrame
 Instance.new("UICorner", addBtn).CornerRadius = UDim.new(0, 5)
 
--- Кнопка "🔍 Scan Blocks"
 local scanToggleBtn = Instance.new("TextButton")
 scanToggleBtn.Size = UDim2.new(0, 155, 0, 30)
 scanToggleBtn.Position = UDim2.new(0, 175, 1, -75)
@@ -154,11 +205,10 @@ scanToggleBtn.TextSize = 14
 scanToggleBtn.Parent = contentFrame
 Instance.new("UICorner", scanToggleBtn).CornerRadius = UDim.new(0, 5)
 
--- Кнопка Переключения Авто-фарма (Toggle Auto-Mine)
 local autoMineBtn = Instance.new("TextButton")
 autoMineBtn.Size = UDim2.new(1, -20, 0, 35)
 autoMineBtn.Position = UDim2.new(0, 10, 1, -40)
-autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40) -- Красная по умолчанию (выключен)
+autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 autoMineBtn.Text = "Auto-Mine: OFF"
 autoMineBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 autoMineBtn.Font = Enum.Font.SourceSansBold
@@ -166,104 +216,33 @@ autoMineBtn.TextSize = 15
 autoMineBtn.Parent = contentFrame
 Instance.new("UICorner", autoMineBtn).CornerRadius = UDim.new(0, 5)
 
--- Переменные логики
 local trackedBlocks = {} 
 local isAutoMining = false
 local connection = nil
 local createBlockRowGlobal = nil 
-local runService = game:GetService("RunService")
 
--- Создаем скрытую локальную платформу, чтобы игрок никогда не падал в бездну
-local antiFallPart = Instance.new("Part")
-antiFallPart.Size = Vector3.new(5, 1, 5)
-antiFallPart.Anchored = true
-antiFallPart.Transparency = 1 -- Полностью невидимая
-antiFallPart.Parent = workspace
-
--- Функция безопасной добычи без кликов по экрану
-local function digBlock(blockModel)
-    if not blockModel then return end
-    local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
-    if not targetPart then return end
+-- Функция автоматического определения текущей зоны игрока
+local function getCurrentWorld()
+    -- Проверяем популярные папки локаций в симуляторах копания
+    local currentZone = "Home World" -- По умолчанию
     
-    local character = localPlayer.Character
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    
-    if rootPart and humanoid then
-        -- 1. Безопасно перемещаем платформу под ноги, а игрока над блоком
-        antiFallPart.CFrame = targetPart.CFrame * CFrame.new(0, 3.5, 0)
-        rootPart.CFrame = targetPart.CFrame * CFrame.new(0, 5, 0)
-        rootPart.Velocity = Vector3.new(0, 0, 0) -- Обнуляем скорость падения
-        
-        -- 2. Экипируем кирку/инструмент из инвентаря, если она не в руках
-        local tool = character:FindFirstChildOfClass("Tool")
-        if not tool then
-            local backpackTool = localPlayer.Backpack:FindFirstChildOfClass("Tool")
-            if backpackTool then
-                humanoid:EquipTool(backpackTool)
-                tool = backpackTool
+    -- Проверка через атрибуты игрока или папки в Workspace
+    if workspace:FindFirstChild("Worlds") then
+        for _, world in ipairs(workspace.Worlds:GetChildren()) do
+            -- Если находим плеер внутри папки зоны или зона активна
+            if world:FindFirstChild(localPlayer.Name) or world:GetAttribute("Active") == true then
+                currentZone = world.Name
             end
         end
-        
-        -- 3. Копаем напрямую через активацию инструмента (ОБХОД КЛИКОВ ПО ЭКРАНУ!)
-        if tool then
-            -- Запускаем непрерывные удары, пока блок не исчезнет
-            while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
-                tool:Activate() -- Активирует кирку напрямую в коде игры, не трогая экран и GUI
-                task.wait(0.1)  -- Частота ударов кирки
-                
-                -- Удерживаем платформу под ногами во время копания
-                antiFallPart.CFrame = targetPart.CFrame * CFrame.new(0, 3.5, 0)
-            end
-        end
+    elseif localPlayer:FindFirstChild("Leaderstats") and localPlayer.Leaderstats:FindFirstChild("World") then
+        currentZone = localPlayer.Leaderstats.World.Value
+    elseif workspace:FindFirstChild("CurrentWorld") then
+        currentZone = workspace.CurrentWorld.Value
     end
+    
+    return currentZone
 end
 
--- Функция умного спуска (копает строго под себя)
-local function digStraightDown()
-    local character = localPlayer.Character
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-    
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Include
-    raycastParams.FilterDescendantsInstances = {blocksFolder}
-    
-    -- Стреляем лучом строго вниз из ног игрока
-    local raycastResult = workspace:Raycast(rootPart.Position, Vector3.new(0, -6, 0), raycastParams)
-    
-    if raycastResult and raycastResult.Instance then
-        local blockModel = raycastResult.Instance.Parent
-        if blockModel and blockModel:IsA("Model") then
-            digBlock(blockModel)
-        end
-    else
-        -- Если под ногами временно пусто (блок удалился, а новый не заспавнился),
-        -- удерживаем невидимую платформу под игроком, чтобы он не улетел вниз
-        antiFallPart.CFrame = rootPart.CFrame * CFrame.new(0, -3.5, 0)
-    end
-end
-
--- Главный цикл авто-фарма с защитой от бесконечного спуска
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if isAutoMining then
-            local targetFound = nil
-            
-            -- 1. Ищем, есть ли нужный блок на карте
-            for _, child in ipairs(blocksFolder:GetChildren()) do
-                if child:IsA("Model") and trackedBlocks[child.Name:lower()] then
-                    targetFound = child
-                    break
-                end
-            end
-            
-            if targetFound then
-                -- Если блок найден, летим и копаем его
-                digBlock(targetFound)
-            else
 -- Функция безопасной добычи (зависание сбоку от блока)
 local function digBlock(blockModel)
     if not blockModel then return end
@@ -275,15 +254,12 @@ local function digBlock(blockModel)
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
     if rootPart and humanoid then
-        -- 1. Полностью обездвиживаем игрока в воздухе (иммунитет к падению и флингам)
         rootPart.Anchored = true
         rootPart.Velocity = Vector3.new(0, 0, 0)
         
-        -- 2. Телепортируем СБОКУ от блока (смещаем на 4 студа вбок по X и приподнимаем на 1 студ)
-        -- Никакого застревания в текстурах! Позиция абсолютно чистая и свободная от блоков.
+        -- Смещаемся на 4 студа сбоку, чтобы не застревать внутри текстуры руды
         rootPart.CFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
         
-        -- Экипируем кирку из инвентаря
         local tool = character:FindFirstChildOfClass("Tool")
         if not tool then
             local backpackTool = localPlayer.Backpack:FindFirstChildOfClass("Tool")
@@ -293,22 +269,16 @@ local function digBlock(blockModel)
             end
         end
         
-        -- 3. Безопасный авто-клик без участия экрана
         if tool then
             while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
-                -- На всякий случай жестко удерживаем позицию сбоку каждый цикл (защита от лагов античита)
                 rootPart.CFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
-                
                 tool:Activate() 
                 task.wait(0.1) 
             end
         end
-        
-        -- Отпускаем заморозку, когда блок сломался
         rootPart.Anchored = false
     end
 end
-
 -- Функция умного спуска (копает любой блок строго под собой)
 local function digStraightDown()
     local character = localPlayer.Character
@@ -319,103 +289,124 @@ local function digStraightDown()
     raycastParams.FilterType = Enum.RaycastFilterType.Include
     raycastParams.FilterDescendantsInstances = {blocksFolder}
     
-    -- Стреляем лучиком вниз, чтобы найти преграду под ногами
     local raycastResult = workspace:Raycast(rootPart.Position, Vector3.new(0, -6, 0), raycastParams)
     
     if raycastResult and raycastResult.Instance then
         local blockModel = raycastResult.Instance.Parent
         if blockModel and blockModel:IsA("Model") then
-            -- Снимаем анкер перед копанием вниз, чтобы плавно опускаться
             rootPart.Anchored = false
             digBlock(blockModel)
         end
     else
-        -- Если под ногами пустота, временно держим игрока в воздухе, пока не спавнится блок
         rootPart.Anchored = true
         rootPart.Velocity = Vector3.new(0, 0, 0)
     end
 end
 
--- Главный цикл авто-фарма
+-- Главный цикл авто-фарма с проверкой миров и зон
 task.spawn(function()
     while true do
         task.wait(0.1)
         if isAutoMining then
-            local targetFound = nil
+            local currentWorld = getCurrentWorld()
+            local currentWorldConfig = worldData[currentWorld]
             
-            for _, child in ipairs(blocksFolder:GetChildren()) do
-                if child:IsA("Model") and trackedBlocks[child.Name:lower()] then
-                    targetFound = child
+            -- Проверяем, есть ли конфигурация для текущего мира
+            if currentWorldConfig then
+                local targetFound = nil
+                local targetOreName = ""
+                
+                -- Ищем, какой блок из списка отслеживания сейчас выбран игроком
+                for lowerName, _ in pairs(trackedBlocks) do
+                    targetOreName = lowerName
                     break
                 end
-            end
-            
-            if targetFound then
-                digBlock(targetFound)
+                
+                if targetOreName == "" then
+                    -- Если список пуст, выключаем фарм
+                    isAutoMining = false
+                    autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+                    autoMineBtn.Text = "Auto-Mine: OFF (List Empty)"
+                    continue
+                end
+                
+                -- Проверяем, существует ли эта руда в текущем мире по нашей таблице
+                local oreConfig = currentWorldConfig.ores[targetOreName]
+                
+                if not oreConfig then
+                    -- РУДЫ НЕТ В ЭТОМ МИРЕ! Ищем, в каком мире она есть
+                    local correctWorld = "Unknown World"
+                    for worldName, data in pairs(worldData) do
+                        if data.ores[targetOreName] then
+                            correctWorld = worldName
+                            break
+                        end
+                    end
+                    
+                    -- Останавливаем фарм и просим игрока сменить зону
+                    isAutoMining = false
+                    autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 40) -- Оранжевый цвет предупреждения
+                    autoMineBtn.Text = "Go to: " .. correctWorld
+                    local character = localPlayer.Character
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        character.HumanoidRootPart.Anchored = false
+                    end
+                    continue
+                end
+                
+                -- Если руда верная для этого мира, ищем её на карте
+                for _, child in ipairs(blocksFolder:GetChildren()) do
+                    if child:IsA("Model") and child.Name:lower() == targetOreName then
+                        targetFound = child
+                        break
+                    end
+                end
+                
+                if targetFound then
+                    digBlock(targetFound)
+                else
+                    -- Если руды нет на текущем экране, проверяем глубину
+                    local character = localPlayer.Character
+                    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+                    if rootPart then
+                        local currentLayer = math.floor((currentWorldConfig.startHeight - rootPart.Position.Y) / currentWorldConfig.layerSize)
+                        
+                        -- Копаем строго до максимального слоя спавна этой руды в этом мире
+                        if currentLayer < oreConfig.max then
+                            digStraightDown()
+                        else
+                            -- Если дошли до дна зоны спавна, а руды нет — ждем обновления карты
+                            rootPart.Anchored = true
+                            autoMineBtn.Text = "Auto-Mine: Waiting for Spawn..."
+                        end
+                    end
+                end
             else
-                digStraightDown()
+                -- Если мир не распознан в таблице, копаем по старой базовой логике
+                local targetFound = nil
+                for _, child in ipairs(blocksFolder:GetChildren()) do
+                    if child:IsA("Model") and trackedBlocks[child.Name:lower()] then
+                        targetFound = child
+                        break
+                    end
+                end
+                if targetFound then digBlock(targetFound) else digStraightDown() end
             end
         else
-            -- Гарантируем, что если авто-фарм выключили, персонаж не останется забагованным в воздухе
             local character = localPlayer.Character
             local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-            if rootPart and rootPart.Anchored then
-                rootPart.Anchored = false
-            end
+            if rootPart and rootPart.Anchored then rootPart.Anchored = false end
         end
     end
 end)
-
-local function clearOldESP()
-    for _, child in ipairs(blocksFolder:GetChildren()) do
-        local cp = child:FindFirstChild("ColorPart") or child:FindFirstChild("Part")
-        if cp then
-            local old = cp:FindFirstChild("UltimateBlockBillboard")
-            if old then old:Destroy() end
-        end
-    end
-end
-
-local function createESP(child)
-    if child:IsA("Model") then
-        local data = trackedBlocks[child.Name:lower()]
-        if data then
-            local colorPart = child:WaitForChild("ColorPart", 3) or child:WaitForChild("Part", 1)
-            if colorPart and not colorPart:FindFirstChild("UltimateBlockBillboard") then
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "UltimateBlockBillboard"
-                billboard.Size = UDim2.new(0, 14, 0, 14)
-                billboard.AlwaysOnTop = true
-                billboard.MaxDistance = math.huge
-                
-                local point = Instance.new("Frame")
-                point.Size = UDim2.new(1, 0, 1, 0)
-                point.BackgroundColor3 = data.color
-                Instance.new("UICorner", point).CornerRadius = UDim.new(1, 0)
-                point.Parent = billboard
-                
-                billboard.Parent = colorPart
-            end
-        end
-    end
-end
-
-local function updateESP()
-    if connection then connection:Disconnect() end
-    clearOldESP()
-    for _, child in ipairs(blocksFolder:GetChildren()) do createESP(child) end
-    connection = blocksFolder.ChildAdded:Connect(createESP)
-end
 
 -- Логика сканера карты с поиском
 local function refreshScanner()
     for _, child in ipairs(scanScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
-    
     local counts = {}
     local searchText = searchBox.Text:lower()
-    
     for _, child in ipairs(blocksFolder:GetChildren()) do
         if child:IsA("Model") then
             if searchText == "" or string.find(child.Name:lower(), searchText) then
@@ -423,13 +414,11 @@ local function refreshScanner()
             end
         end
     end
-    
     for blockName, count in pairs(counts) do
         local itemFrame = Instance.new("Frame")
         itemFrame.Size = UDim2.new(1, -10, 0, 25)
         itemFrame.BackgroundTransparency = 1
         itemFrame.Parent = scanScroll
-        
         local clickBtn = Instance.new("TextButton")
         clickBtn.Size = UDim2.new(1, 0, 1, 0)
         clickBtn.BackgroundTransparency = 0.9
@@ -441,7 +430,6 @@ local function refreshScanner()
         clickBtn.TextSize = 14
         clickBtn.Parent = itemFrame
         Instance.new("UICorner", clickBtn).CornerRadius = UDim.new(0, 4)
-        
         clickBtn.MouseButton1Click:Connect(function()
             if createBlockRowGlobal then
                 createBlockRowGlobal(blockName, math.random(50,255), math.random(50,255), math.random(50,255))
@@ -453,7 +441,6 @@ end
 
 refreshScanBtn.MouseButton1Click:Connect(refreshScanner)
 searchBox:GetPropertyChangedSignal("Text"):Connect(refreshScanner)
-
 scanToggleBtn.MouseButton1Click:Connect(function()
     scanFrame.Visible = not scanFrame.Visible
     if scanFrame.Visible then refreshScanner() end
@@ -519,18 +506,15 @@ local function createBlockRow(initialName, rVal, gVal, bVal)
     Instance.new("UICorner", removeBtn).CornerRadius = UDim.new(0, 4)
 
     local currentBlockKey = initialName:lower()
-    
     local function applyRowSettings()
         if currentBlockKey and trackedBlocks[currentBlockKey] then trackedBlocks[currentBlockKey] = nil end
         local newName = nameBox.Text
         currentBlockKey = newName:lower()
-        
         if newName ~= "" and newName ~= "Name..." then
             local r = math.clamp(tonumber(rBox.Text) or 0, 0, 255)
             local g = math.clamp(tonumber(gBox.Text) or 0, 0, 255)
             local b = math.clamp(tonumber(bBox.Text) or 0, 0, 255)
             rBox.Text, gBox.Text, bBox.Text = tostring(r), tostring(g), tostring(b)
-            
             local finalColor = Color3.fromRGB(r, g, b)
             colorIndicator.BackgroundColor3 = finalColor
             trackedBlocks[currentBlockKey] = {color = finalColor, originalName = newName}
@@ -542,30 +526,25 @@ local function createBlockRow(initialName, rVal, gVal, bVal)
     rBox.FocusLost:Connect(applyRowSettings)
     gBox.FocusLost:Connect(applyRowSettings)
     bBox.FocusLost:Connect(applyRowSettings)
-
     removeBtn.MouseButton1Click:Connect(function()
         if currentBlockKey and trackedBlocks[currentBlockKey] then trackedBlocks[currentBlockKey] = nil end
         rowFrame:Destroy()
         updateESP()
     end)
-
     applyRowSettings()
 end
 
 createBlockRowGlobal = createBlockRow
-
 addBtn.MouseButton1Click:Connect(function() createBlockRow("Name...", 255, 255, 255) end)
 
--- Логика переключения кнопки Auto-Mine
 autoMineBtn.MouseButton1Click:Connect(function()
     isAutoMining = not isAutoMining
     if isAutoMining then
-        autoMineBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45) -- Зеленая
+        autoMineBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45)
         autoMineBtn.Text = "Auto-Mine: ON"
     else
-        autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40) -- Красная
+        autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
         autoMineBtn.Text = "Auto-Mine: OFF"
-        -- Принудительно симулируем отжатие клика на всякий случай
         vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
     end
 end)
@@ -578,3 +557,4 @@ toggleBtn.MouseButton1Click:Connect(function()
     scanFrame.Visible = false
     toggleBtn.Text = isMinimized and "+" or "−"
 end)
+
