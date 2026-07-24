@@ -1,14 +1,19 @@
 local blocksFolder = workspace:WaitForChild("Blocks", 15)
 if not blocksFolder then return end
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BlockTrackerOptimized"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = game:GetService("CoreGui") or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local vim = game:GetService("VirtualInputManager")
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local camera = workspace.CurrentCamera
 
--- Главная панель
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BlockTrackerAutoFarmGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = game:GetService("CoreGui") or localPlayer:WaitForChild("PlayerGui")
+
+-- Главная панель (расширена для кнопки авто-фарма)
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 350, 0, 240)
+mainFrame.Size = UDim2.new(0, 350, 0, 280)
 mainFrame.Position = UDim2.new(0.1, 0, 0.3, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 0
@@ -19,7 +24,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
 
 -- Панель сканера (Scanner Frame)
 local scanFrame = Instance.new("Frame")
-scanFrame.Size = UDim2.new(0, 220, 0, 240)
+scanFrame.Size = UDim2.new(0, 220, 0, 280)
 scanFrame.Position = UDim2.new(1, 10, 0, 0)
 scanFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 scanFrame.BorderSizePixel = 0
@@ -40,7 +45,7 @@ searchBox.ClearTextOnFocus = false
 searchBox.Parent = scanFrame
 Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 4)
 
--- Кнопка Обновить скан вручную
+-- Кнопка Обновить скан
 local refreshScanBtn = Instance.new("TextButton")
 refreshScanBtn.Size = UDim2.new(1, -10, 0, 25)
 refreshScanBtn.Position = UDim2.new(0, 5, 0, 35)
@@ -68,7 +73,7 @@ scanListLayout.Padding = UDim.new(0, 3)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 35)
 title.Position = UDim2.new(0, 10, 0, 0)
-title.Text = "Block Tracker ESP"
+title.Text = "Block Tracker & Auto-Mine"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.BackgroundTransparency = 1
@@ -94,7 +99,7 @@ contentFrame.BackgroundTransparency = 1
 contentFrame.Parent = mainFrame
 
 local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(1, -10, 1, -45)
+scrollingFrame.Size = UDim2.new(1, -10, 1, -85) -- Оставили место снизу для двух кнопок
 scrollingFrame.Position = UDim2.new(0, 5, 0, 5)
 scrollingFrame.BackgroundTransparency = 1
 scrollingFrame.BorderSizePixel = 0
@@ -107,9 +112,10 @@ uiListLayout.Parent = scrollingFrame
 uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 uiListLayout.Padding = UDim.new(0, 5)
 
+-- Кнопка "+ Add Block"
 local addBtn = Instance.new("TextButton")
 addBtn.Size = UDim2.new(0, 155, 0, 30)
-addBtn.Position = UDim2.new(0, 10, 1, -35)
+addBtn.Position = UDim2.new(0, 10, 1, -75)
 addBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45)
 addBtn.Text = "+ Add Block"
 addBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -118,9 +124,10 @@ addBtn.TextSize = 14
 addBtn.Parent = contentFrame
 Instance.new("UICorner", addBtn).CornerRadius = UDim.new(0, 5)
 
+-- Кнопка "🔍 Scan Blocks"
 local scanToggleBtn = Instance.new("TextButton")
 scanToggleBtn.Size = UDim2.new(0, 155, 0, 30)
-scanToggleBtn.Position = UDim2.new(0, 175, 0, 170)
+scanToggleBtn.Position = UDim2.new(0, 175, 1, -75)
 scanToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 75, 125)
 scanToggleBtn.Text = "🔍 Scan Blocks"
 scanToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -129,17 +136,120 @@ scanToggleBtn.TextSize = 14
 scanToggleBtn.Parent = contentFrame
 Instance.new("UICorner", scanToggleBtn).CornerRadius = UDim.new(0, 5)
 
+-- Кнопка Переключения Авто-фарма (Toggle Auto-Mine)
+local autoMineBtn = Instance.new("TextButton")
+autoMineBtn.Size = UDim2.new(1, -20, 0, 35)
+autoMineBtn.Position = UDim2.new(0, 10, 1, -40)
+autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40) -- Красная по умолчанию (выключен)
+autoMineBtn.Text = "Auto-Mine: OFF"
+autoMineBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+autoMineBtn.Font = Enum.Font.SourceSansBold
+autoMineBtn.TextSize = 15
+autoMineBtn.Parent = contentFrame
+Instance.new("UICorner", autoMineBtn).CornerRadius = UDim.new(0, 5)
+
+-- Переменные логики
 local trackedBlocks = {} 
-local rowDistanceLabels = {} -- Список для обновления дистанции прямо в интерфейсе меню
+local isAutoMining = false
 local connection = nil
 local createBlockRowGlobal = nil 
+-- Функция симуляции копания конкретного блока
+local function digBlock(blockModel)
+    if not blockModel then return end
+    local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
+    if not targetPart then return end
+    
+    local character = localPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        rootPart.CFrame = targetPart.CFrame * CFrame.new(0, 4, 0) -- Встаем над блоком
+    end
+    
+    local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+    if onScreen then
+        vim:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 1)
+        while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
+            task.wait(0.05)
+        end
+        vim:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 1)
+    end
+end
+
+-- Функция умного спуска (копает любой блок строго под собой)
+local function digStraightDown()
+    local character = localPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Include
+    raycastParams.FilterDescendantsInstances = {blocksFolder}
+    
+    -- Стреляем лучом из центра персонажа вниз на 10 студов
+    local raycastResult = workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), raycastParams)
+    
+    if raycastResult and raycastResult.Instance then
+        local blockModel = raycastResult.Instance.Parent
+        if blockModel and blockModel:IsA("Model") then
+            digBlock(blockModel)
+        end
+    end
+end
+
+-- Главный цикл авто-фарма с защитой от бесконечного спуска
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if isAutoMining then
+            local targetFound = nil
+            
+            -- 1. Ищем, есть ли нужный блок на карте
+            for _, child in ipairs(blocksFolder:GetChildren()) do
+                if child:IsA("Model") and trackedBlocks[child.Name:lower()] then
+                    targetFound = child
+                    break
+                end
+            end
+            
+            if targetFound then
+                -- Если блок найден, летим и копаем его
+                digBlock(targetFound)
+            else
+                -- 2. Если блока НЕТ, проверяем, имеет ли смысл копать ниже!
+                local character = localPlayer.Character
+                local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+                
+                if rootPart then
+                    -- Рассчитываем текущий слой (примерная логика для Mining Simulator)
+                    -- Допустим, высота спавна 0 слоя = 0. Чем ниже копаем, тем меньше Y.
+                    local startHeight = 50 -- Высота поверхности (поменяй под свою игру)
+                    local blockSize = 6    -- Высота одного блока в студах
+                    local currentLayer = math.floor((startHeight - rootPart.Position.Y) / blockSize)
+                    
+                    -- Защита: в Home World максимальная глубина руд (например, Rainbowite) — 9+ слой
+                    -- Если игрок опустился ниже 12-15 слоя, а руды всё ещё нет, значит её просто нет на карте
+                    if currentLayer < 15 then 
+                        digStraightDown() -- Копаем ниже, мы ещё в пределах шахты
+                    else
+                        -- МЫ СЛИШКОМ ГЛУБОКО ИЛИ РУДЫ НЕТ В ЭТОМ МИРЕ!
+                        isAutoMining = false
+                        autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+                        autoMineBtn.Text = "Auto-Mine: OFF (Max Depth / Not Found)"
+                        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        warn("Авто-фарм остановлен: руда не найдена в этой зоне на доступной глубине.")
+                    end
+                end
+            end
+        end
+    end
+end)
+
 
 local function clearOldESP()
     for _, child in ipairs(blocksFolder:GetChildren()) do
-        -- Проверяем наличие метки внутри ColorPart или обычного Part
-        local colorPart = child:FindFirstChild("ColorPart") or child:FindFirstChild("Part")
-        if colorPart then
-            local old = colorPart:FindFirstChild("UltimateBlockBillboard")
+        local cp = child:FindFirstChild("ColorPart") or child:FindFirstChild("Part")
+        if cp then
+            local old = cp:FindFirstChild("UltimateBlockBillboard")
             if old then old:Destroy() end
         end
     end
@@ -149,9 +259,7 @@ local function createESP(child)
     if child:IsA("Model") then
         local data = trackedBlocks[child.Name:lower()]
         if data then
-            -- Сначала ищем ColorPart, если его нет — ищем просто Part (ждем до 3 секунд)
             local colorPart = child:WaitForChild("ColorPart", 3) or child:WaitForChild("Part", 1)
-            
             if colorPart and not colorPart:FindFirstChild("UltimateBlockBillboard") then
                 local billboard = Instance.new("BillboardGui")
                 billboard.Name = "UltimateBlockBillboard"
@@ -171,43 +279,12 @@ local function createESP(child)
     end
 end
 
-
 local function updateESP()
     if connection then connection:Disconnect() end
     clearOldESP()
     for _, child in ipairs(blocksFolder:GetChildren()) do createESP(child) end
     connection = blocksFolder.ChildAdded:Connect(createESP)
 end
-
--- Обновление дистанции прямо в тексте строк UI (не лагает)
-game:GetService("RunService").RenderStepped:Connect(function()
-    local camera = workspace.CurrentCamera
-    if not camera then return end
-    local camPos = camera.CFrame.Position
-    
-    for lowerName, label in pairs(rowDistanceLabels) do
-        if label and label.Parent then
-            local closestDist = math.huge
-            for _, child in ipairs(blocksFolder:GetChildren()) do
-                if child.Name:lower() == lowerName then
-                    local cp = child:FindFirstChild("ColorPart")
-                    if cp then
-                        local dist = (camPos - cp.Position).Magnitude
-                        if dist < closestDist then closestDist = dist end
-                    end
-                end
-            end
-            if closestDist < math.huge then
-                label.Text = string.format("[%d m]", math.floor(closestDist))
-            else
-                label.Text = "[None]"
-            end
-        else
-            rowDistanceLabels[lowerName] = nil
-        end
-    end
-end)
-
 -- Логика сканера карты с поиском
 local function refreshScanner()
     for _, child in ipairs(scanScroll:GetChildren()) do
@@ -357,10 +434,24 @@ createBlockRowGlobal = createBlockRow
 
 addBtn.MouseButton1Click:Connect(function() createBlockRow("Name...", 255, 255, 255) end)
 
+-- Логика переключения кнопки Auto-Mine
+autoMineBtn.MouseButton1Click:Connect(function()
+    isAutoMining = not isAutoMining
+    if isAutoMining then
+        autoMineBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45) -- Зеленая
+        autoMineBtn.Text = "Auto-Mine: ON"
+    else
+        autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40) -- Красная
+        autoMineBtn.Text = "Auto-Mine: OFF"
+        -- Принудительно симулируем отжатие клика на всякий случай
+        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end
+end)
+
 local isMinimized = false
 toggleBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
-    mainFrame.Size = isMinimized and UDim2.new(0, 350, 0, 40) or UDim2.new(0, 350, 0, 240)
+    mainFrame.Size = isMinimized and UDim2.new(0, 350, 0, 40) or UDim2.new(0, 350, 0, 280)
     contentFrame.Visible = not isMinimized
     scanFrame.Visible = false
     toggleBtn.Text = isMinimized and "+" or "−"
