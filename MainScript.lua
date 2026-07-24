@@ -19,65 +19,35 @@ local players = game:GetService("Players")
 local localPlayer = players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- 2. ТАБЛИЦА МИРОВ, СЛОЕВ И ДИАПАЗОНОВ СПАВНА РУД
-local worldData = {
-    ["Home World"] = {
-        startHeight = 50, -- Начальная высота поверхности мира (в студах)
-        layerSize = 6,    -- Высота одного слоя/блока (в студах)
-        maxLayer = 12,    -- Максимальная глубина шахты в этом мире
-        ores = {
-            ["fossils"] = {min = 2, max = 12},
-            ["dinosaur bones"] = {min = 2, max = 12},
-            ["coal"] = {min = 3, max = 12},
-            ["copper"] = {min = 3, max = 12},
-            ["silver"] = {min = 4, max = 12},
-            ["quartz"] = {min = 4, max = 12},
-            ["skeleton stone"] = {min = 4, max = 12},
-            ["gold"] = {min = 5, max = 12},
-            ["pezzottaite"] = {min = 5, max = 12},
-            ["obsidian"] = {min = 6, max = 12},
-            ["emerald"] = {min = 6, max = 12},
-            ["ruby"] = {min = 6, max = 12},
-            ["lavastone"] = {min = 6, max = 12},
-            ["sapphire"] = {min = 6, max = 12},
-            ["glowstone"] = {min = 6, max = 12},
-            ["uranium"] = {min = 6, max = 12},
-            ["platinum"] = {min = 6, max = 12},
-            ["lapis"] = {min = 6, max = 12},
-            ["krixanium"] = {min = 6, max = 12},
-            ["red rock"] = {min = 6, max = 12},
-            ["dravite"] = {min = 6, max = 12},
-            ["diamond"] = {min = 7, max = 12},
-            ["unobtainium"] = {min = 7, max = 12},
-            ["mythic stone"] = {min = 7, max = 12},
-            ["legendary stone"] = {min = 7, max = 12},
-            ["breadstone"] = {min = 8, max = 12},
-            ["shadow stone"] = {min = 9, max = 12},
-            ["illuminite"] = {min = 9, max = 12},
-            ["rainbowite"] = {min = 9, max = 12},
-            ["wooden chest"] = {min = 1, max = 12},
-            ["silver chest"] = {min = 3, max = 12},
-            ["golden chest"] = {min = 4, max = 12},
-            ["magical chest"] = {min = 5, max = 12},
-            ["mythical chest"] = {min = 5, max = 12},
-            ["unobtainable chest"] = {min = 6, max = 12},
-            ["shadow chest"] = {min = 6, max = 12},
-            ["light chest"] = {min = 9, max = 12},
-            ["token chest"] = {min = 10, max = 12}
-        }
-    },
-    ["Toy Land"] = {
-        startHeight = 40,
-        layerSize = 6,
-        maxLayer = 8,
-        ores = {
-            ["plastic"] = {min = 1, max = 6},
-            ["toy"] = {min = 1, max = 6},
-            ["teddybear"] = {min = 1, max = 6},
-            ["block chest"] = {min = 1, max = 6}
-        }
-    }
-    -- Сюда мы добавим остальные 9 миров по такой же схеме!
+-- 2. СЛОВАРЬ ДЛЯ РАСПОЗНАВАНИЯ МИРОВ ПО НАЗВАНИЯМ РУД (Для вывода подсказок о переходе)
+local oreToWorldMap = {
+    -- Home World
+    ["fossils"] = "Home World", ["dinosaur bones"] = "Home World", ["coal"] = "Home World", 
+    ["copper"] = "Home World", ["silver"] = "Home World", ["quartz"] = "Home World", 
+    ["skeleton stone"] = "Home World", ["gold"] = "Home World", ["pezzottaite"] = "Home World", 
+    ["obsidian"] = "Home World", ["emerald"] = "Home World", ["ruby"] = "Home World", 
+    ["lavastone"] = "Home World", ["sapphire"] = "Home World", ["glowstone"] = "Home World", 
+    ["uranium"] = "Home World", ["platinum"] = "Home World", ["lapis"] = "Home World", 
+    ["krixanium"] = "Home World", ["red rock"] = "Home World", ["dravite"] = "Home World", 
+    ["diamond"] = "Home World", ["unobtainium"] = "Home World", ["mythic stone"] = "Home World", 
+    ["legendary stone"] = "Home World", ["breadstone"] = "Home World", ["shadow stone"] = "Home World", 
+    ["illuminite"] = "Home World", ["rainbowite"] = "Home World",
+    -- Candy Land
+    ["sugar stone"] = "Candy Land", ["icing"] = "Candy Land", ["peppermint"] = "Candy Land",
+    ["skittles ore"] = "Candy Land", ["jellybean stone"] = "Candy Land", ["lollipop ore"] = "Candy Land",
+    ["gumdrop"] = "Candy Land", ["rock candy"] = "Candy Land", ["gummyworm"] = "Candy Land",
+    ["candy floss ore"] = "Candy Land", ["candy fish ore"] = "Candy Land",
+    -- Toy Land
+    ["plastic"] = "Toy Land", ["toy"] = "Toy Land", ["teddybear"] = "Toy Land", ["block chest"] = "Toy Land",
+    -- Dino Land
+    ["prehistoric stone"] = "Dino Land", ["dinosaur eggs"] = "Dino Land", ["meat bones"] = "Dino Land",
+    ["amber"] = "Dino Land", ["halite"] = "Dino Land", ["black onyx"] = "Dino Land", ["cannibar"] = "Dino Land",
+    -- Beach
+    ["coral"] = "Beach", ["shells"] = "Beach", ["coconuts"] = "Beach", ["sandstone"] = "Beach",
+    -- Space Adventure
+    ["moon stone"] = "Space Adventure", ["meteorite"] = "Space Adventure", ["alien ore"] = "Space Adventure",
+    -- Lava World
+    ["magma stone"] = "Lava World", ["magma crusted ore"] = "Lava World", ["sulfur"] = "Lava World"
 }
 
 -- 3. СОЗДАНИЕ ГЛАВНОГО ИНТЕРФЕЙСА (GUI)
@@ -221,29 +191,7 @@ local isAutoMining = false
 local connection = nil
 local createBlockRowGlobal = nil 
 
--- Функция автоматического определения текущей зоны игрока
-local function getCurrentWorld()
-    -- Проверяем популярные папки локаций в симуляторах копания
-    local currentZone = "Home World" -- По умолчанию
-    
-    -- Проверка через атрибуты игрока или папки в Workspace
-    if workspace:FindFirstChild("Worlds") then
-        for _, world in ipairs(workspace.Worlds:GetChildren()) do
-            -- Если находим плеер внутри папки зоны или зона активна
-            if world:FindFirstChild(localPlayer.Name) or world:GetAttribute("Active") == true then
-                currentZone = world.Name
-            end
-        end
-    elseif localPlayer:FindFirstChild("Leaderstats") and localPlayer.Leaderstats:FindFirstChild("World") then
-        currentZone = localPlayer.Leaderstats.World.Value
-    elseif workspace:FindFirstChild("CurrentWorld") then
-        currentZone = workspace.CurrentWorld.Value
-    end
-    
-    return currentZone
-end
-
--- Функция безопасной добычи (зависание сбоку от блока)
+-- Функция копания сбоку от блока
 local function digBlock(blockModel)
     if not blockModel then return end
     local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
@@ -256,9 +204,7 @@ local function digBlock(blockModel)
     if rootPart and humanoid then
         rootPart.Anchored = true
         rootPart.Velocity = Vector3.new(0, 0, 0)
-        
-        -- Смещаемся на 4 студа сбоку, чтобы не застревать внутри текстуры руды
-        rootPart.CFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
+        rootPart.CFrame = targetPart.CFrame * CFrame.new(4, 1, 0) -- Зависаем в 4 метрах сбоку
         
         local tool = character:FindFirstChildOfClass("Tool")
         if not tool then
@@ -279,7 +225,8 @@ local function digBlock(blockModel)
         rootPart.Anchored = false
     end
 end
--- Функция умного спуска (копает любой блок строго под собой)
+
+-- Функция копания строго под себя
 local function digStraightDown()
     local character = localPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
@@ -303,94 +250,67 @@ local function digStraightDown()
     end
 end
 
--- Главный цикл авто-фарма с проверкой миров и зон
+-- Главный бесконечный цикл авто-майнинга
 task.spawn(function()
     while true do
         task.wait(0.1)
         if isAutoMining then
-            local currentWorld = getCurrentWorld()
-            local currentWorldConfig = worldData[currentWorld]
+            local targetFound = nil
+            local targetOreName = ""
             
-            -- Проверяем, есть ли конфигурация для текущего мира
-            if currentWorldConfig then
-                local targetFound = nil
-                local targetOreName = ""
-                
-                -- Ищем, какой блок из списка отслеживания сейчас выбран игроком
-                for lowerName, _ in pairs(trackedBlocks) do
-                    targetOreName = lowerName
+            -- Выясняем, какую руду сейчас ищет игрок
+            for lowerName, _ in pairs(trackedBlocks) do
+                targetOreName = lowerName
+                break
+            end
+            
+            if targetOreName == "" then
+                isAutoMining = false
+                autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+                autoMineBtn.Text = "Auto-Mine: OFF (List Empty)"
+                continue
+            end
+            
+            -- 1. Сначала ищем руду в текущей папке Blocks
+            for _, child in ipairs(blocksFolder:GetChildren()) do
+                if child:IsA("Model") and child.Name:lower() == targetOreName then
+                    targetFound = child
                     break
                 end
+            end
+            
+            if targetFound then
+                digBlock(targetFound)
+            else
+                -- 2. Если руды на карте нет, проверяем по словарю, принадлежит ли она другому миру
+                local estimatedWorld = oreToWorldMap[targetOreName]
                 
-                if targetOreName == "" then
-                    -- Если список пуст, выключаем фарм
-                    isAutoMining = false
-                    autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-                    autoMineBtn.Text = "Auto-Mine: OFF (List Empty)"
-                    continue
-                end
-                
-                -- Проверяем, существует ли эта руда в текущем мире по нашей таблице
-                local oreConfig = currentWorldConfig.ores[targetOreName]
-                
-                if not oreConfig then
-                    -- РУДЫ НЕТ В ЭТОМ МИРЕ! Ищем, в каком мире она есть
-                    local correctWorld = "Unknown World"
-                    for worldName, data in pairs(worldData) do
-                        if data.ores[targetOreName] then
-                            correctWorld = worldName
+                -- Сканируем названия блоков, которые СЕЙЧАС есть на карте, чтобы понять текущую зону
+                local currentMapHasLocalBlocks = false
+                for _, child in ipairs(blocksFolder:GetChildren()) do
+                    if child:IsA("Model") then
+                        local localWorld = oreToWorldMap[child.Name:lower()]
+                        if localWorld and estimatedWorld and localWorld == estimatedWorld then
+                            currentMapHasLocalBlocks = true
                             break
                         end
                     end
-                    
-                    -- Останавливаем фарм и просим игрока сменить зону
+                end
+                
+                if estimatedWorld and not currentMapHasLocalBlocks then
+                    -- Если руда из другого мира, просим игрока перейти туда
                     isAutoMining = false
-                    autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 40) -- Оранжевый цвет предупреждения
-                    autoMineBtn.Text = "Go to: " .. correctWorld
+                    autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 90, 40) -- Оранжевый цвет
+                    autoMineBtn.Text = "Please teleport to: " .. estimatedWorld
+                    
                     local character = localPlayer.Character
                     if character and character:FindFirstChild("HumanoidRootPart") then
                         character.HumanoidRootPart.Anchored = false
                     end
-                    continue
-                end
-                
-                -- Если руда верная для этого мира, ищем её на карте
-                for _, child in ipairs(blocksFolder:GetChildren()) do
-                    if child:IsA("Model") and child.Name:lower() == targetOreName then
-                        targetFound = child
-                        break
-                    end
-                end
-                
-                if targetFound then
-                    digBlock(targetFound)
                 else
-                    -- Если руды нет на текущем экране, проверяем глубину
-                    local character = localPlayer.Character
-                    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-                    if rootPart then
-                        local currentLayer = math.floor((currentWorldConfig.startHeight - rootPart.Position.Y) / currentWorldConfig.layerSize)
-                        
-                        -- Копаем строго до максимального слоя спавна этой руды в этом мире
-                        if currentLayer < oreConfig.max then
-                            digStraightDown()
-                        else
-                            -- Если дошли до дна зоны спавна, а руды нет — ждем обновления карты
-                            rootPart.Anchored = true
-                            autoMineBtn.Text = "Auto-Mine: Waiting for Spawn..."
-                        end
-                    end
+                    -- Если руда из этого мира, но её пока не видно — копаем под себя
+                    digStraightDown()
                 end
-            else
-                -- Если мир не распознан в таблице, копаем по старой базовой логике
-                local targetFound = nil
-                for _, child in ipairs(blocksFolder:GetChildren()) do
-                    if child:IsA("Model") and trackedBlocks[child.Name:lower()] then
-                        targetFound = child
-                        break
-                    end
-                end
-                if targetFound then digBlock(targetFound) else digStraightDown() end
             end
         else
             local character = localPlayer.Character
@@ -399,6 +319,47 @@ task.spawn(function()
         end
     end
 end)
+
+local function clearOldESP()
+    for _, child in ipairs(blocksFolder:GetChildren()) do
+        local cp = child:FindFirstChild("ColorPart") or child:FindFirstChild("Part")
+        if cp then
+            local old = cp:FindFirstChild("UltimateBlockBillboard")
+            if old then old:Destroy() end
+        end
+    end
+end
+
+local function createESP(child)
+    if child:IsA("Model") then
+        local data = trackedBlocks[child.Name:lower()]
+        if data then
+            local colorPart = child:WaitForChild("ColorPart", 3) or child:WaitForChild("Part", 1)
+            if colorPart and not colorPart:FindFirstChild("UltimateBlockBillboard") then
+                local billboard = Instance.new("BillboardGui")
+                billboard.Name = "UltimateBlockBillboard"
+                billboard.Size = UDim2.new(0, 14, 0, 14)
+                billboard.AlwaysOnTop = true
+                billboard.MaxDistance = math.huge
+                
+                local point = Instance.new("Frame")
+                point.Size = UDim2.new(1, 0, 1, 0)
+                point.BackgroundColor3 = data.color
+                Instance.new("UICorner", point).CornerRadius = UDim.new(1, 0)
+                point.Parent = billboard
+                
+                billboard.Parent = colorPart
+            end
+        end
+    end
+end
+
+local function updateESP()
+    if connection then connection:Disconnect() end
+    clearOldESP()
+    for _, child in ipairs(blocksFolder:GetChildren()) do createESP(child) end
+    connection = blocksFolder.ChildAdded:Connect(createESP)
+end
 
 -- Логика сканера карты с поиском
 local function refreshScanner()
@@ -557,4 +518,3 @@ toggleBtn.MouseButton1Click:Connect(function()
     scanFrame.Visible = false
     toggleBtn.Text = isMinimized and "+" or "−"
 end)
-
