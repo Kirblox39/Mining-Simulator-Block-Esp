@@ -136,7 +136,8 @@ local createBlockRowGlobal = nil
 
 local function clearOldESP()
     for _, child in ipairs(blocksFolder:GetChildren()) do
-        local colorPart = child:FindFirstChild("ColorPart")
+        -- Проверяем наличие метки внутри ColorPart или обычного Part
+        local colorPart = child:FindFirstChild("ColorPart") or child:FindFirstChild("Part")
         if colorPart then
             local old = colorPart:FindFirstChild("UltimateBlockBillboard")
             if old then old:Destroy() end
@@ -148,7 +149,9 @@ local function createESP(child)
     if child:IsA("Model") then
         local data = trackedBlocks[child.Name:lower()]
         if data then
-            local colorPart = child:WaitForChild("ColorPart", 3)
+            -- Сначала ищем ColorPart, если его нет — ищем просто Part (ждем до 3 секунд)
+            local colorPart = child:WaitForChild("ColorPart", 3) or child:WaitForChild("Part", 1)
+            
             if colorPart and not colorPart:FindFirstChild("UltimateBlockBillboard") then
                 local billboard = Instance.new("BillboardGui")
                 billboard.Name = "UltimateBlockBillboard"
@@ -167,6 +170,7 @@ local function createESP(child)
         end
     end
 end
+
 
 local function updateESP()
     if connection then connection:Disconnect() end
