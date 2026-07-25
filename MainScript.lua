@@ -192,6 +192,7 @@ local connection = nil
 local createBlockRowGlobal = nil 
 
 -- Новая функция безопасного удержания в воздухе без использования Anchored
+-- Новая безопасная функция добычи через клики по центру экрана
 local function digBlock(blockModel)
     if not blockModel then return end
     local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
@@ -202,17 +203,7 @@ local function digBlock(blockModel)
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
     if rootPart and humanoid then
-        -- Телепортируем СБОКУ от блока (на 4 студа в сторону по X и приподнимаем на 1 студ)
-        local targetCFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
-        rootPart.CFrame = targetCFrame
-        
-        -- Создаем локальную левитацию через обнуление гравитации, чтобы тело могло двигаться и махать киркой
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge) -- Жестко держит в воздухе
-        bodyVelocity.Parent = rootPart
-        
-        -- Автоматически берем кирку в руки
+        -- 1. Экипируем кирку
         local tool = character:FindFirstChildOfClass("Tool")
         if not tool then
             local backpackTool = localPlayer.Backpack:FindFirstChildOfClass("Tool")
@@ -221,24 +212,41 @@ local function digBlock(blockModel)
                 tool = backpackTool
             end
         end
+
+        -- 2. Телепортируем СБОКУ от блока
+        local targetCFrame = targetPart.CFrame * CFrame.new(4, 1, 0)
+        rootPart.CFrame = targetCFrame
         
-        -- Цикл непрерывной добычи
-        if tool then
-            while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
-                -- Постоянно возвращаем позицию сбоку и обнуляем падение, если античит пытается толкнуть
-                rootPart.CFrame = targetCFrame
-                rootPart.Velocity = Vector3.new(0, 0, 0)
-                
-                tool:Activate() -- Теперь взмахи и урон будут работать на 100%, так как Anchored выключен!
-                task.wait(0.1) 
-            end
+        -- Удерживаем в воздухе через BodyVelocity, чтобы тело могло двигаться
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyVelocity.Parent = rootPart
+        
+        -- 3. Цикл осторожного клика по центру экрана
+        while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
+            rootPart.CFrame = targetCFrame
+            rootPart.Velocity = Vector3.new(0, 0, 0)
+            
+            -- Принудительно направляем камеру игрока прямо на блок
+            camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+            
+            -- Получаем точный центр экрана (где гарантированно нет твоего GUI)
+            local viewportSize = camera.ViewportSize
+            local centerX = viewportSize.X / 2
+            local centerY = viewportSize.Y / 2
+            
+            -- Симулируем быстрое зажатие и отпускание по центру экрана
+            vim:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+            task.wait(0.05)
+            vim:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+            
+            task.wait(0.05) -- Небольшая пауза между ударами для стабильности пинга
         end
         
-        -- Убираем левитацию, когда блок сломался, чтобы игрок мог снова ходить
         if bodyVelocity then bodyVelocity:Destroy() end
     end
 end
-
 
 -- Функция копания строго под себя
 local function digStraightDown()
