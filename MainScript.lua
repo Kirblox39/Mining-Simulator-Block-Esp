@@ -200,7 +200,9 @@ safePlatform.Transparency = 0.5 -- Полностью невидимая
 safePlatform.CanCollide = true -- На ней можно стоять
 safePlatform.Parent = workspace
 
--- Функция безопасной добычи с поиском пустого пространства сбоку
+-- =============================================================================
+-- ОБНОВЛЕННАЯ ЧАСТЬ 3: ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ КОПАНИЯ (С УДЕРЖАНИЕМ И 3D-ПОИСКОМ)
+-- =============================================================================
 local function digBlock(blockModel)
     if not blockModel then return end
     local targetPart = blockModel:FindFirstChild("ColorPart") or blockModel:FindFirstChild("Part") or blockModel:FindFirstChildOfClass("BasePart")
@@ -211,7 +213,7 @@ local function digBlock(blockModel)
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
     if rootPart and humanoid then
-        -- 1. Экипируем кирку из инвентаря
+        -- 1. Автоматическая экипировка инструмента
         local tool = character:FindFirstChildOfClass("Tool")
         if not tool then
             local backpackTool = localPlayer.Backpack:FindFirstChildOfClass("Tool")
@@ -221,66 +223,71 @@ local function digBlock(blockModel)
             end
         end
 
-        -- 2. УМНЫЙ ПОИСК СВОБОДНОЙ СТОРОНЫ (Проверка, чтобы не появиться внутри соседнего блока)
+        -- 2. РАСШИРЕННЫЙ 3D-ПОИСК СВОБОДНОЙ ЗОНЫ (Сбоку, Сверху, Снизу)
         local offsets = {
-            CFrame.new(4, 0, 0),   -- Справа
-            CFrame.new(-4, 0, 0),  -- Слева
-            CFrame.new(0, 0, 4),   -- Спереди
-            CFrame.new(0, 0, -4)   -- Сзади
+            CFrame.new(0, 5, 0),    -- 1. Сверху (стоим НА блоке)
+            CFrame.new(4, 0, 0),    -- 2. Справа
+            CFrame.new(-4, 0, 0),   -- 3. Слева
+            CFrame.new(0, 0, 4),    -- 4. Спереди
+            CFrame.new(0, 0, -4),   -- 5. Сзади
+            CFrame.new(0, -5, 0)    -- 6. Снизу (под блоком, копаем вверх)
         }
         
-        local safeCFrame = targetPart.CFrame * offsets[1] -- По умолчанию встаем справа
+        -- По умолчанию: если воздуха нет нигде, спавним платформу строго под блоком (отступ 4.5 студа)
+        local safeCFrame = targetPart.CFrame * CFrame.new(0, -4.5, 0)
         
-        -- Параметры для сканирования пространства
         local raycastParams = RaycastParams.new()
         raycastParams.FilterType = Enum.RaycastFilterType.Include
         raycastParams.FilterDescendantsInstances = {blocksFolder}
         
-        -- Проверяем лучами все 4 стороны вокруг целевого блока
+        -- Ищем свободную зону среди 6 направлений
         for _, offset in ipairs(offsets) do
             local checkPos = (targetPart.CFrame * offset).Position
-            -- Стреляем коротким лучем внутри этой точки, чтобы проверить, нет ли там блока
             local hit = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -4, 0), raycastParams)
             
             if not hit then
-                -- Если луч ничего не задел, значит в этой точке СБОКУ пустота (свободный туннель)
+                -- Воздух найден! Устанавливаем точку перемещения
                 safeCFrame = targetPart.CFrame * offset
-                break -- Нашли идеальное место для безопасного появления!
+                break
             end
         end
 
-        -- 3. ТЕЛЕПОРТАЦИЯ НА НЕВИДИМЫЙ ПОЛ В ПУСТОТЕ
-        -- Ставим невидимую платформу строго под ноги в безопасной зоне
+        -- 3. ПЕРВИЧНЫЙ ТЕЛЕПОРТ
         safePlatform.CFrame = safeCFrame * CFrame.new(0, -1, 0)
         rootPart.CFrame = safeCFrame * CFrame.new(0, 1, 0)
         rootPart.Velocity = Vector3.new(0, 0, 0)
         
-        -- 4. ЦИКЛ НАДЕЖНОГО КЛИКА ПО ЦЕНТРУ ЭКРАНА
+        -- 4. ЖЕСТКИЙ БЕСКОНЕЧНЫЙ ЦИКЛ УДЕРЖАНИЯ И КЛИКОВ
         while blockModel and blockModel.Parent == blocksFolder and isAutoMining do
-            -- Жестко удерживаем игрока и пол на месте (защита от падений и пинга)
+            -- Проверка дистанции: если персонажа откинуло лагом/античитом дальше 6 студов — принудительно возвращаем
+            if (rootPart.Position - safeCFrame.Position).Magnitude > 6 then
+                rootPart.CFrame = safeCFrame * CFrame.new(0, 1, 0)
+            end
+            
+            -- Жестко держим платформу и обнуляем скорость
             safePlatform.CFrame = safeCFrame * CFrame.new(0, -1, 0)
-            rootPart.CFrame = safeCFrame * CFrame.new(0, 1, 0)
             rootPart.Velocity = Vector3.new(0, 0, 0)
             
-            -- Поворачиваем камеру точно на блок
+            -- Камера смотрит точно на руду
             camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
             
-            -- Кликаем ровно в центр экрана (мимо GUI)
+            -- Клик по центру экрана
             local viewportSize = camera.ViewportSize
             local centerX = viewportSize.X / 2
             local centerY = viewportSize.Y / 2
             
             vim:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-            task.wait(0.05)
+            task.wait(0.04)
             vim:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
             
-            task.wait(0.05)
+            task.wait(0.04)
         end
         
-        -- Убираем платформу далеко под карту, когда блок сломан, чтобы она не мешала ходить обычным шагом
+        -- Прячем платформу после уничтожения блока
         safePlatform.CFrame = CFrame.new(0, -9999, 0)
     end
 end
+
 
 
 -- Функция копания строго под себя
