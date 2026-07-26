@@ -1,5 +1,5 @@
 -- Инициализация глобальной базы данных руд
-_G.oreToWorldMap = {
+local oreToWorldMap = {
     -- БАЗОВЫЕ И ДОРОГИЕ БЛОКИ МИРОВ
     ["stone"] = {{world = "Home World", layer = 0, prettyName = "Stone"}},
     ["dirt"] = {{world = "Home World", layer = 1, prettyName = "Dirt"}},
@@ -287,14 +287,259 @@ _G.oreToWorldMap = {
         {world = "Space Adventure", layer = 6, prettyName = "Breadstone"}
     }
 }
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local BlocksFolder = Workspace:FindFirstChild("Blocks")
 
--- Автоматическое слияние первой части (из прошлого сообщения) и этой второй части в глобальную память
-if not _G.oreToWorldMap then
-    _G.oreToWorldMap = {}
+local LocalPlayer = Players.LocalPlayer
+
+if not BlocksFolder then
+    warn("Папка 'Blocks' не найдена в Workspace!")
+    return
 end
 
-for oreName, infoData in pairs(part2) do
-    _G.oreToWorldMap[oreName] = infoData
+-- Получаем склеенную базу данных из памяти
+
+
+-- Создание GUI
+local ScreenGui = Instance.new("ScreenGui", CoreGui)
+ScreenGui.Name = "DeltaOreSearcherWithDistance"
+
+local MainFrame = Instance.new("Frame", ScreenGui)
+MainFrame.Size = UDim2.new(0, 350, 0, 400)
+MainFrame.Position = UDim2.new(0.1, 0, 0.25, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.Active = true
+MainFrame.Draggable = true
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+
+local Title = Instance.new("TextLabel", MainFrame)
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "Ore Searcher & Distance ESP"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.Font = Enum.Font.SourceSansBold
+Title.BackgroundTransparency = 1
+
+-- Кнопка Add Block
+local AddBtn = Instance.new("TextButton", MainFrame)
+AddBtn.Size = UDim2.new(0.44, 0, 0, 35)
+AddBtn.Position = UDim2.new(0.04, 0, 0, 45)
+AddBtn.Text = "+ Add Block"
+AddBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AddBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 40)
+AddBtn.Font = Enum.Font.SourceSansBold
+AddBtn.TextSize = 14
+Instance.new("UICorner", AddBtn).CornerRadius = UDim.new(0, 5)
+
+-- Кнопка Search
+local SearchBtn = Instance.new("TextButton", MainFrame)
+SearchBtn.Size = UDim2.new(0.44, 0, 0, 35)
+SearchBtn.Position = UDim2.new(0.52, 0, 0, 45)
+SearchBtn.Text = "🔍 Search"
+SearchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SearchBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 160)
+SearchBtn.Font = Enum.Font.SourceSansBold
+SearchBtn.TextSize = 14
+Instance.new("UICorner", SearchBtn).CornerRadius = UDim.new(0, 5)
+
+-- ScrollingFrame для окошек настроек руд
+local ScrollFrame = Instance.new("ScrollingFrame", MainFrame)
+ScrollFrame.Size = UDim2.new(0.92, 0, 0, 295)
+ScrollFrame.Position = UDim2.new(0.04, 0, 0, 95)
+ScrollFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.ScrollBarThickness = 5
+Instance.new("UICorner", ScrollFrame).CornerRadius = UDim.new(0, 5)
+
+local UIListLayout = Instance.new("UIListLayout", ScrollFrame)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 5)
+
+UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- Таблица, где хранятся настройки из активных окон (Имя -> {R, G, B, RealName})
+local ConfiguredBlocks = {}
+
+-- Поиск парта (ColorPart, Part или любой BasePart/MeshPart)
+local function getValidPart(block)
+    local part = block:FindFirstChild("ColorPart") or block:FindFirstChild("Part")
+    if not part then
+        for _, child in ipairs(block:GetChildren()) do
+            if child:IsA("BasePart") or child:IsA("MeshPart") then
+                part = child
+                break
+            end
+        end
+    end
+    return part
 end
 
-print("Вторая часть базы успешно добавлена. Всего руд в базе: ", table.concat({print(select(2, pcall(function() local c = 0 for _ in pairs(_G.oreToWorldMap) do c = c + 1 end return c end)))}))
+-- Функция постоянного обновления дистанции до блока
+local function startDistanceTracker(txtLabel, part, baseName)
+    task.spawn(function()
+        -- Пока BillboardGui существует и парта на месте, считаем дистанцию
+        while part and part:IsDescendantOf(Workspace) and txtLabel and txtLabel.Parent do
+            local character = LocalPlayer.Character
+            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+            
+            if rootPart then
+                -- Вычисление расстояния с помощью .Magnitude
+                local distance = (rootPart.Position - part.Position).Magnitude
+                
+                -- Форматируем текст: "Название [150m]" (округляем до целого числа)
+                txtLabel.Text = string.format("%s [%dm]", baseName, math.floor(distance))
+            else
+                txtLabel.Text = baseName .. " [--]"
+            end
+            
+            task.wait(0.1) -- Частота обновления (раз в 100мс, оптимально для Delta)
+        end
+    end)
+end
+
+-- Создание и обновление ESP
+local function applyESP(block)
+    local cleanName = string.lower(block.Name)
+    local config = ConfiguredBlocks[cleanName]
+    if not config then return end -- Если такого блока нет в наших окошках, игнорируем
+
+    local part = getValidPart(block)
+    if not part then return end
+
+    if part:FindFirstChild("BlockESP") then part.BlockESP:Destroy() end
+
+    local bbGui = Instance.new("BillboardGui", part)
+    bbGui.Name = "BlockESP"
+    bbGui.AlwaysOnTop = true
+    bbGui.Size = UDim2.new(0, 130, 0, 30) -- Чуть увеличили ширину для влезания метров
+    bbGui.ExtentsOffset = Vector3.new(0, 2, 0)
+
+    local txt = Instance.new("TextLabel", bbGui)
+    txt.Size = UDim2.new(1, 0, 1, 0)
+    txt.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    txt.BackgroundTransparency = 0.4
+    txt.Text = config.RealName .. " [...]"
+    txt.TextColor3 = Color3.fromRGB(config.R, config.G, config.B)
+    txt.TextSize = 11 -- Немного уменьшили шрифт для красивого визуала дистанции
+    txt.Font = Enum.Font.SourceSansBold
+    Instance.new("UICorner", txt).CornerRadius = UDim.new(0, 4)
+
+    -- Запуск отдельного потока для просчета метров
+    startDistanceTracker(txt, part, config.RealName)
+end
+
+-- Функция создания нового окошка руды в ScrollingFrame
+local function createBlockWindow()
+    local itemFrame = Instance.new("Frame", ScrollFrame)
+    itemFrame.Size = UDim2.new(1, -10, 0, 55)
+    itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
+
+    -- Поле ввода имени блока
+    local nameBox = Instance.new("TextBox", itemFrame)
+    nameBox.Size = UDim2.new(0.45, 0, 0, 22)
+    nameBox.Position = UDim2.new(0.03, 0, 0, 5)
+    nameBox.Text = "stone"
+    nameBox.PlaceholderText = "Ore Name"
+    nameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    nameBox.TextSize = 12
+    nameBox.Font = Enum.Font.SourceSans
+    Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0, 4)
+
+    -- Инпуты для RGB цвета
+    local function addRGBInput(pos, def, ph)
+        local box = Instance.new("TextBox", itemFrame)
+        box.Size = UDim2.new(0.13, 0, 0, 22)
+        box.Position = pos
+        box.Text = def
+        box.PlaceholderText = ph
+        box.TextColor3 = Color3.fromRGB(255, 255, 255)
+        box.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        box.TextSize = 11
+        box.Font = Enum.Font.SourceSans
+        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+        return box
+    end
+
+    local rBox = addRGBInput(UDim2.new(0.52, 0, 0, 5), "255", "R")
+    local gBox = addRGBInput(UDim2.new(0.67, 0, 0, 5), "255", "G")
+    local bBox = addRGBInput(UDim2.new(0.82, 0, 0, 5), "255", "B")
+
+    -- Кнопка "Where?" для поиска информации по таблице
+    local whereBtn = Instance.new("TextButton", itemFrame)
+    whereBtn.Size = UDim2.new(0.45, 0, 0, 20)
+    whereBtn.Position = UDim2.new(0.03, 0, 0, 30)
+    whereBtn.Text = "📍 Where?"
+    whereBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    whereBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    whereBtn.TextSize = 11
+    whereBtn.Font = Enum.Font.SourceSansBold
+    Instance.new("UICorner", whereBtn).CornerRadius = UDim.new(0, 4)
+
+    local currentKey = "stone"
+
+    local function updateData()
+        if ConfiguredBlocks[currentKey] then ConfiguredBlocks[currentKey] = nil end
+        
+        local cleanName = string.lower(string.gsub(nameBox.Text, "^%s*(.-)%s*$", "%1"))
+        currentKey = cleanName
+
+        ConfiguredBlocks[cleanName] = {
+            RealName = nameBox.Text,
+            R = tonumber(rBox.Text) or 255,
+            G = tonumber(gBox.Text) or 255,
+            B = tonumber(bBox.Text) or 255
+        }
+    end
+
+    nameBox:GetPropertyChangedSignal("Text"):Connect(updateData)
+    rBox:GetPropertyChangedSignal("Text"):Connect(updateData)
+    gBox:GetPropertyChangedSignal("Text"):Connect(updateData)
+    bBox:GetPropertyChangedSignal("Text"):Connect(updateData)
+    
+    updateData()
+
+    -- Логика кнопки "Where?"
+    whereBtn.MouseButton1Click:Connect(function()
+        local searchKey = string.lower(string.gsub(nameBox.Text, "^%s*(.-)%s*$", "%1"))
+        local data = oreToWorldMap[searchKey]
+
+        print("--- Info for: [" .. nameBox.Text .. "] ---")
+        if data then
+            for _, loc in ipairs(data) do
+                print(string.format("Name: %s | World: %s | Layer: %d", loc.prettyName, loc.world, loc.layer))
+            end
+            whereBtn.Text = "Logs printed (F9)"
+            task.delay(1.5, function() whereBtn.Text = "📍 Where?" end)
+        else
+            print("Block '" .. nameBox.Text .. "' not found in oreToWorldMap.")
+            whereBtn.Text = "Not found!"
+            task.delay(1.5, function() whereBtn.Text = "📍 Where?" end)
+        end
+    end)
+end
+
+-- Обработка кнопок интерфейса
+AddBtn.MouseButton1Click:Connect(function()
+    createBlockWindow()
+end)
+
+SearchBtn.MouseButton1Click:Connect(function()
+    for _, block in ipairs(BlocksFolder:GetChildren()) do
+        applyESP(block)
+    end
+end)
+
+-- Автоматический трекер новых блоков (ChildAdded)
+BlocksFolder.ChildAdded:Connect(function(newBlock)
+    task.wait(0.2)
+    applyESP(newBlock)
+end)
+
+-- Инициализируем одно окно по умолчанию при старте
+createBlockWindow()
