@@ -1323,46 +1323,76 @@ end
 saveConfigBtn.MouseButton1Click:Connect(saveCurrentConfig)
 loadConfigBtn.MouseButton1Click:Connect(loadSavedConfig)
 
+-- =============================================================================
+-- ОБНОВЛЕННЫЙ ЦИКЛ БЫСТРОЙ АВТОЭКИПИРОВКИ (ЗАМЕНИТЬ САМЫЙ КОНЕЦ СКРИПТА)
+-- =============================================================================
 task.spawn(function()
     while true do
-        task.wait(1)
+        task.wait(0.3) -- Оптимальная задержка для Delta Executor, чтобы не крашило
+        
         pcall(function()
-            local screenGui = localPlayer:WaitForChild("PlayerGui"):FindFirstChild("ScreenGui")
-            if screenGui then
-                local inventoryFrame = screenGui:FindFirstChild("InventoryFrame")
-                if isAutoEquipEggEnabled and inventoryFrame and inventoryFrame.Visible == true then
-                    if inventoryFrame:FindFirstChild("Items") then inventoryFrame.Items.Visible = false end
-                    if inventoryFrame:FindFirstChild("Categories") then inventoryFrame.Categories.Visible = false end
-                    if inventoryFrame:FindFirstChild("Search") then inventoryFrame.Search.Visible = false end
-                    if inventoryFrame:FindFirstChild("SortBy") then inventoryFrame.SortBy.Visible = false end
-                    inventoryFrame.BackgroundTransparency = 1
-                    local closeBtn = inventoryFrame:FindFirstChild("Close")
-                    if closeBtn then closeBtn.Visible = true closeBtn.BackgroundTransparency = 0 end
-                elseif not isAutoEquipEggEnabled and inventoryFrame then
-                    if inventoryFrame:FindFirstChild("Items") then inventoryFrame.Items.Visible = true end
-                    if inventoryFrame:FindFirstChild("Categories") then inventoryFrame.Categories.Visible = true end
-                    if inventoryFrame:FindFirstChild("Search") then inventoryFrame.Search.Visible = true end
-                    if inventoryFrame:FindFirstChild("SortBy") then inventoryFrame.SortBy.Visible = true end
-                    inventoryFrame.BackgroundTransparency = 0
-                end
-                if isAutoEquipEggEnabled then
-                    local lootPage = screenGui:FindFirstChild("LootPage")
-                    if lootPage and lootPage.Visible == true then
-                        local panel = lootPage:FindFirstChild("Panel")
-                        local actions = panel and panel:FindFirstChild("Actions")
-                        local activateBtn = actions and actions:FindFirstChild("Activate")
-                        if activateBtn and activateBtn:IsA("TextButton") then firesignal(activateBtn.MouseButton1Click) end
-                    else
-                        if inventoryFrame and inventoryFrame.Visible == true then
-                            local itemsContainer = inventoryFrame:FindFirstChild("Items", true) and inventoryFrame.Items:FindFirstChild("Items")
-                            if itemsContainer then
-                                for _, item in ipairs(itemsContainer:GetChildren()) do
+            local playerGui = localPlayer:WaitForChild("PlayerGui", 5)
+            local screenGui = playerGui and playerGui:FindFirstChild("ScreenGui")
+            if not screenGui then return end
+            
+            local inventoryFrame = screenGui:FindFirstChild("InventoryFrame")
+            local lootPage = screenGui:FindFirstChild("LootPage")
+            
+            -- Если функция включена
+            if isAutoEquipEggEnabled then
+                
+                -- ШАГ 1: Если на экране висит окно выпавшего питомца (LootPage) — жмем "Activate"
+                if lootPage and lootPage.Visible == true then
+                    local panel = lootPage:FindFirstChild("Panel")
+                    local actions = panel and panel:FindFirstChild("Actions")
+                    local activateBtn = actions and actions:FindFirstChild("Activate")
+                    
+                    if activateBtn and activateBtn:IsA("TextButton") then 
+                        firesignal(activateBtn.MouseButton1Click) 
+                        task.wait(0.1)
+                    end
+                else
+                    -- ШАГ 2: Если окно LootPage закрылось, проверяем инвентарь
+                    if inventoryFrame then
+                        -- Если инвентарь закрыт — принудительно открываем его для экипировки
+                        if inventoryFrame.Visible == false then
+                            inventoryFrame.Visible = true
+                        end
+                        
+                        -- Ищем контейнер с предметами по точному пути из Dex Explorer
+                        local itemsWrapper = inventoryFrame:FindFirstChild("Items")
+                        local itemsContainer = itemsWrapper and itemsWrapper:FindFirstChild("Items")
+                        
+                        if itemsContainer then
+                            local foundEgg = false
+                            
+                            -- Перебираем все предметы в инвентаре
+                            for _, item in ipairs(itemsContainer:GetChildren()) do
+                                if item:IsA("Frame") and item.Name == "InventoryItem" then
                                     local decore = item:FindFirstChild("Decore")
                                     local itemLevel = decore and decore:FindFirstChild("ItemLevel")
+                                    
+                                    -- Если уровень пустой — значит это яйцо (Epic Egg и т.д.)
                                     if itemLevel and itemLevel.Text == "" then
+                                        -- Ищем кнопку клика на самом объекте или внутри него
                                         local clickArea = item:IsA("TextButton") and item or item:FindFirstChildOfClass("TextButton")
-                                        if clickArea then firesignal(clickArea.MouseButton1Click) break end
+                                        if clickArea then 
+                                            firesignal(clickArea.MouseButton1Click) 
+                                            foundEgg = true
+                                            task.wait(0.15) -- Короткая пауза на отправку сетевого пакета
+                                            break 
+                                        end
                                     end
+                                end
+                            end
+                            
+                            -- ШАГ 3: Если яйцо успешно экипировано/кликнуто — сразу закрываем инвентарь
+                            if foundEgg then
+                                local closeBtn = inventoryFrame:FindFirstChild("Close")
+                                if closeBtn and closeBtn:IsA("TextButton") then
+                                    firesignal(closeBtn.MouseButton1Click)
+                                    -- На всякий случай скрываем окно физически, если игра пропустила клик
+                                    inventoryFrame.Visible = false 
                                 end
                             end
                         end
@@ -1372,5 +1402,14 @@ task.spawn(function()
         end)
     end
 end)
+
+-- Автоматическая загрузка конфига при старте
+task.spawn(function() 
+    task.wait(1.5) 
+    if readfile and isfile and isfile(configFileName) then 
+        loadSavedConfig() 
+    end 
+end)
+
 
 task.spawn(function() task.wait(1.5) if readfile and isfile and isfile(configFileName) then loadSavedConfig() end end)
