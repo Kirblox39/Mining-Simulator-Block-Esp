@@ -1168,10 +1168,15 @@ toggleBtn.MouseButton1Click:Connect(function()
     toggleBtn.Text = isMinimized and "+" or "−"
 end)
 
+-- 1. Исправление кнопки обычного Авто-Майна
 autoMineBtn.MouseButton1Click:Connect(function()
     isAutoMining = not isAutoMining
     if isAutoMining then
-        if isSmartRebirthing then isSmartRebirthing = false standaloneRebirthBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 30) standaloneRebirthBtn.Text = "Lava Rebirth: OFF" end
+        if isSmartRebirthing then 
+            isSmartRebirthing = false 
+            standaloneRebirthBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 30) 
+            standaloneRebirthBtn.Text = "Lava Rebirth: OFF" 
+        end
         autoMineBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45)
         autoMineBtn.Text = "Auto-Mine: ON"
     else
@@ -1180,6 +1185,56 @@ autoMineBtn.MouseButton1Click:Connect(function()
         if mainRemote then mainRemote:FireServer("MineBlock", {}) end
     end
 end)
+
+-- =============================================================================
+-- ИСПРАВЛЕННЫЕ И ДОБАВЛЕННЫЕ ОБРАБОТЧИКИ КНОПОК (ВСТАВИТЬ В КОНЕЦ ЧАСТИ 8)
+-- =============================================================================
+
+-- 2. ДОБАВЛЕНО: Обработчик для Лавового Ребёртх-Фарма (Lava Rebirth)
+standaloneRebirthBtn.MouseButton1Click:Connect(function()
+    isSmartRebirthing = not isSmartRebirthing
+    if isSmartRebirthing then
+        if isAutoMining then 
+            isAutoMining = false 
+            autoMineBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40) 
+            autoMineBtn.Text = "Auto-Mine: OFF" 
+        end
+        standaloneRebirthBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45)
+        standaloneRebirthBtn.Text = "Lava Rebirth: ON"
+    else
+        standaloneRebirthBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 30)
+        standaloneRebirthBtn.Text = "Lava Rebirth: OFF"
+        local character = localPlayer.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then 
+            character.HumanoidRootPart.Anchored = false 
+        end
+    end
+end)
+
+-- 3. ДОБАВЛЕНО: Обработчик фонового перерождения (BG Rebirth)
+toggleBackgroundRebirthBtn.MouseButton1Click:Connect(function()
+    isBackgroundRebirthEnabled = not isBackgroundRebirthEnabled
+    if isBackgroundRebirthEnabled then
+        toggleBackgroundRebirthBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45)
+        toggleBackgroundRebirthBtn.Text = "BG Rebirth: ON"
+    else
+        toggleBackgroundRebirthBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 120)
+        toggleBackgroundRebirthBtn.Text = "BG Rebirth: OFF"
+    end
+end)
+
+-- 4. ДОБАВЛЕНО: Обработчик авто-экипировки яиц (Auto-Equip Egg)
+autoEquipEggBtn.MouseButton1Click:Connect(function()
+    isAutoEquipEggEnabled = not isAutoEquipEggEnabled
+    if isAutoEquipEggEnabled then
+        autoEquipEggBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 45)
+        autoEquipEggBtn.Text = "Auto-Equip Next Egg: ON"
+    else
+        autoEquipEggBtn.BackgroundColor3 = Color3.fromRGB(110, 40, 80)
+        autoEquipEggBtn.Text = "Auto-Equip Next Egg: OFF"
+    end
+end)
+
 
 boostFpsBtn.MouseButton1Click:Connect(function()
     if isFpsBoostEnabled then return end
