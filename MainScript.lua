@@ -291,7 +291,6 @@ local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local BlocksFolder = Workspace:FindFirstChild("Blocks")
-
 local LocalPlayer = Players.LocalPlayer
 
 if not BlocksFolder then
@@ -299,13 +298,14 @@ if not BlocksFolder then
     return
 end
 
--- Получаем склеенную базу данных из памяти
+-- Создание глобального контейнера для ESP в CoreGui (чтобы не пропадали)
+local EspContainer = CoreGui:FindFirstChild("DeltaEspContainer") or Instance.new("Folder", CoreGui)
+EspContainer.Name = "DeltaEspContainer"
 
-
--- Создание GUI
 local ScreenGui = Instance.new("ScreenGui", CoreGui)
-ScreenGui.Name = "DeltaOreSearcherWithDistance"
+ScreenGui.Name = "DeltaOreSearcherV2"
 
+-- ГЛАВНОЕ ОКНО
 local MainFrame = Instance.new("Frame", ScreenGui)
 MainFrame.Size = UDim2.new(0, 350, 0, 400)
 MainFrame.Position = UDim2.new(0.1, 0, 0.25, 0)
@@ -314,18 +314,50 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
-local Title = Instance.new("TextLabel", MainFrame)
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "Ore Searcher & Distance ESP"
+-- Шапка главного окна (для перетаскивания и кнопок)
+local Header = Instance.new("Frame", MainFrame)
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundTransparency = 1
+
+local Title = Instance.new("TextLabel", Header)
+Title.Size = UDim2.new(0.7, 0, 1, 0)
+Title.Position = UDim2.new(0.04, 0, 0, 0)
+Title.Text = "Ore Searcher & ESP"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.SourceSansBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.BackgroundTransparency = 1
 
--- Кнопка Add Block
-local AddBtn = Instance.new("TextButton", MainFrame)
+-- Кнопка Свернуть/Развернуть главное окно
+local ToggleMainBtn = Instance.new("TextButton", Header)
+ToggleMainBtn.Size = UDim2.new(0, 30, 0, 30)
+ToggleMainBtn.Position = UDim2.new(1, -40, 0.5, -15)
+ToggleMainBtn.Text = "—"
+ToggleMainBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+ToggleMainBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+ToggleMainBtn.Font = Enum.Font.SourceSansBold
+ToggleMainBtn.TextSize = 16
+Instance.new("UICorner", ToggleMainBtn).CornerRadius = UDim.new(0, 4)
+
+-- Контент главного окна (все что ниже шапки)
+local MainContent = Instance.new("Frame", MainFrame)
+MainContent.Size = UDim2.new(1, 0, 1, -40)
+MainContent.Position = UDim2.new(0, 0, 0, 40)
+MainContent.BackgroundTransparency = 1
+
+local collapsed = false
+ToggleMainBtn.MouseButton1Click:Connect(function()
+    collapsed = not collapsed
+    MainContent.Visible = not collapsed
+    MainFrame.Size = collapsed and UDim2.new(0, 350, 0, 40) or UDim2.new(0, 350, 0, 400)
+    ToggleMainBtn.Text = collapsed and "＋" or "—"
+end)
+
+-- Элементы управления внутри контента
+local AddBtn = Instance.new("TextButton", MainContent)
 AddBtn.Size = UDim2.new(0.44, 0, 0, 35)
-AddBtn.Position = UDim2.new(0.04, 0, 0, 45)
+AddBtn.Position = UDim2.new(0.04, 0, 0, 5)
 AddBtn.Text = "+ Add Block"
 AddBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AddBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 40)
@@ -333,10 +365,9 @@ AddBtn.Font = Enum.Font.SourceSansBold
 AddBtn.TextSize = 14
 Instance.new("UICorner", AddBtn).CornerRadius = UDim.new(0, 5)
 
--- Кнопка Search
-local SearchBtn = Instance.new("TextButton", MainFrame)
+local SearchBtn = Instance.new("TextButton", MainContent)
 SearchBtn.Size = UDim2.new(0.44, 0, 0, 35)
-SearchBtn.Position = UDim2.new(0.52, 0, 0, 45)
+SearchBtn.Position = UDim2.new(0.52, 0, 0, 5)
 SearchBtn.Text = "🔍 Search"
 SearchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 SearchBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 160)
@@ -344,10 +375,9 @@ SearchBtn.Font = Enum.Font.SourceSansBold
 SearchBtn.TextSize = 14
 Instance.new("UICorner", SearchBtn).CornerRadius = UDim.new(0, 5)
 
--- ScrollingFrame для окошек настроек руд
-local ScrollFrame = Instance.new("ScrollingFrame", MainFrame)
+local ScrollFrame = Instance.new("ScrollingFrame", MainContent)
 ScrollFrame.Size = UDim2.new(0.92, 0, 0, 295)
-ScrollFrame.Position = UDim2.new(0.04, 0, 0, 95)
+ScrollFrame.Position = UDim2.new(0.04, 0, 0, 55)
 ScrollFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 ScrollFrame.ScrollBarThickness = 5
@@ -361,10 +391,8 @@ UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Таблица, где хранятся настройки из активных окон (Имя -> {R, G, B, RealName})
 local ConfiguredBlocks = {}
 
--- Поиск парта (ColorPart, Part или любой BasePart/MeshPart)
 local function getValidPart(block)
     local part = block:FindFirstChild("ColorPart") or block:FindFirstChild("Part")
     if not part then
@@ -378,44 +406,41 @@ local function getValidPart(block)
     return part
 end
 
--- Функция постоянного обновления дистанции до блока
-local function startDistanceTracker(txtLabel, part, baseName)
+local function startDistanceTracker(txtLabel, part, baseName, bbGui)
     task.spawn(function()
-        -- Пока BillboardGui существует и парта на месте, считаем дистанцию
-        while part and part:IsDescendantOf(Workspace) and txtLabel and txtLabel.Parent do
+        while part and part:IsDescendantOf(Workspace) and txtLabel and txtLabel.Parent and bbGui and bbGui.Parent do
             local character = LocalPlayer.Character
             local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-            
             if rootPart then
-                -- Вычисление расстояния с помощью .Magnitude
                 local distance = (rootPart.Position - part.Position).Magnitude
-                
-                -- Форматируем текст: "Название [150m]" (округляем до целого числа)
                 txtLabel.Text = string.format("%s [%dm]", baseName, math.floor(distance))
             else
                 txtLabel.Text = baseName .. " [--]"
             end
-            
-            task.wait(0.1) -- Частота обновления (раз в 100мс, оптимально для Delta)
+            task.wait(0.2)
         end
+        if bbGui then bbGui:Destroy() end -- Очистка метки, если парт пропал
     end)
 end
 
--- Создание и обновление ESP
 local function applyESP(block)
     local cleanName = string.lower(block.Name)
     local config = ConfiguredBlocks[cleanName]
-    if not config then return end -- Если такого блока нет в наших окошках, игнорируем
+    if not config then return end
 
     local part = getValidPart(block)
     if not part then return end
 
-    if part:FindFirstChild("BlockESP") then part.BlockESP:Destroy() end
+    -- Ищем старый ESP по уникальному тегу парта в контейнере CoreGui
+    local oldEsp = EspContainer:FindFirstChild("ESP_" .. block:GetDebugId())
+    if oldEsp then oldEsp:Destroy() end
 
-    local bbGui = Instance.new("BillboardGui", part)
-    bbGui.Name = "BlockESP"
+    -- Фикс: Создаем BillboardGui внутри CoreGui.EspContainer и связываем через Adornee
+    local bbGui = Instance.new("BillboardGui", EspContainer)
+    bbGui.Name = "ESP_" .. block:GetDebugId()
+    bbGui.Adornee = part
     bbGui.AlwaysOnTop = true
-    bbGui.Size = UDim2.new(0, 130, 0, 30) -- Чуть увеличили ширину для влезания метров
+    bbGui.Size = UDim2.new(0, 140, 0, 30)
     bbGui.ExtentsOffset = Vector3.new(0, 2, 0)
 
     local txt = Instance.new("TextLabel", bbGui)
@@ -424,22 +449,115 @@ local function applyESP(block)
     txt.BackgroundTransparency = 0.4
     txt.Text = config.RealName .. " [...]"
     txt.TextColor3 = Color3.fromRGB(config.R, config.G, config.B)
-    txt.TextSize = 11 -- Немного уменьшили шрифт для красивого визуала дистанции
+    txt.TextSize = 11
     txt.Font = Enum.Font.SourceSansBold
     Instance.new("UICorner", txt).CornerRadius = UDim.new(0, 4)
 
-    -- Запуск отдельного потока для просчета метров
-    startDistanceTracker(txt, part, config.RealName)
+    startDistanceTracker(txt, part, config.RealName, bbGui)
 end
 
--- Функция создания нового окошка руды в ScrollingFrame
+-- ФУНКЦИЯ ГЕНЕРАЦИИ ОКНА ДЛЯ КНОПКИ "WHERE"
+local function createWhereWindow(oreName, locations)
+    -- Проверяем, нет ли уже открытого окна для этой руды
+    local existing = ScreenGui:FindFirstChild("Where_" .. string.lower(oreName))
+    if existing then existing:Destroy() end
+
+    local infoFrame = Instance.new("Frame", ScreenGui)
+    infoFrame.Name = "Where_" .. string.lower(oreName)
+    infoFrame.Size = UDim2.new(0, 260, 0, 180)
+    infoFrame.Position = MainFrame.Position + UDim2.new(0, 360, 0, 0) -- Спавнится правее главного меню
+    infoFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 33)
+    infoFrame.Active = true
+    infoFrame.Draggable = true
+    Instance.new("UICorner", infoFrame).CornerRadius = UDim.new(0, 8)
+
+    local infHeader = Instance.new("Frame", infoFrame)
+    infHeader.Size = UDim2.new(1, 0, 0, 35)
+    infHeader.BackgroundTransparency = 1
+
+    local infTitle = Instance.new("TextLabel", infHeader)
+    infTitle.Size = UDim2.new(0.6, 0, 1, 0)
+    infTitle.Position = UDim2.new(0.05, 0, 0, 0)
+    infTitle.Text = "Info: " .. oreName
+    infTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    infTitle.TextSize = 14
+    infTitle.Font = Enum.Font.SourceSansBold
+    infTitle.TextXAlignment = Enum.TextXAlignment.Left
+    infTitle.BackgroundTransparency = 1
+
+    -- Кнопка закрыть (Х)
+    local closeBtn = Instance.new("TextButton", infHeader)
+    closeBtn.Size = UDim2.new(0, 25, 0, 25)
+    closeBtn.Position = UDim2.new(1, -30, 0.5, -12.5)
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 30)
+    closeBtn.Font = Enum.Font.SourceSansBold
+    closeBtn.TextSize = 12
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
+    closeBtn.MouseButton1Click:Connect(function() infoFrame:Destroy() end)
+
+    -- Кнопка Свернуть/Развернуть (—)
+    local toggleBtn = Instance.new("TextButton", infHeader)
+    toggleBtn.Size = UDim2.new(0, 25, 0, 25)
+    toggleBtn.Position = UDim2.new(1, -60, 0.5, -12.5)
+    toggleBtn.Text = "—"
+    toggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    toggleBtn.Font = Enum.Font.SourceSansBold
+    toggleBtn.TextSize = 12
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 4)
+
+    local infContent = Instance.new("ScrollingFrame", infoFrame)
+    infContent.Size = UDim2.new(0.9, 0, 1, -45)
+    infContent.Position = UDim2.new(0.05, 0, 0, 40)
+    infContent.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+    infContent.ScrollBarThickness = 4
+    Instance.new("UICorner", infContent).CornerRadius = UDim.new(0, 4)
+    
+    local infList = Instance.new("UIListLayout", infContent)
+    infList.Padding = UDim.new(0, 4)
+    infList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        infContent.CanvasSize = UDim2.new(0, 0, 0, infList.AbsoluteContentSize.Y + 6)
+    end)
+
+    local infCollapsed = false
+    toggleBtn.MouseButton1Click:Connect(function()
+        infCollapsed = not infCollapsed
+        infContent.Visible = not infCollapsed
+        infoFrame.Size = infCollapsed and UDim2.new(0, 260, 0, 35) or UDim2.new(0, 260, 0, 180)
+        toggleBtn.Text = infCollapsed and "＋" or "—"
+    end)
+
+    -- Наполнение списка локациями
+    if locations and #locations > 0 then
+        for _, loc in ipairs(locations) do
+            local lbl = Instance.new("TextLabel", infContent)
+            lbl.Size = UDim2.new(1, -6, 0, 35)
+            lbl.BackgroundColor3 = Color3.fromRGB(35, 35, 38)
+                        lbl.Text = string.format(" %s\n World: %s | Layer: %d", loc.prettyName, loc.world, loc.layer)
+            lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+            lbl.TextSize = 11
+            lbl.Font = Enum.Font.SourceSans
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 4)
+        end
+    else
+        local lbl = Instance.new("TextLabel", infContent)
+        lbl.Size = UDim2.new(1, -6, 0, 30)
+        lbl.Text = " Block not found in database."
+        lbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+        lbl.TextSize = 11
+        lbl.Font = Enum.Font.SourceSans
+        lbl.BackgroundTransparency = 1
+    end
+end
 local function createBlockWindow()
     local itemFrame = Instance.new("Frame", ScrollFrame)
     itemFrame.Size = UDim2.new(1, -10, 0, 55)
     itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
 
-    -- Поле ввода имени блока
     local nameBox = Instance.new("TextBox", itemFrame)
     nameBox.Size = UDim2.new(0.45, 0, 0, 22)
     nameBox.Position = UDim2.new(0.03, 0, 0, 5)
@@ -451,7 +569,6 @@ local function createBlockWindow()
     nameBox.Font = Enum.Font.SourceSans
     Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0, 4)
 
-    -- Инпуты для RGB цвета
     local function addRGBInput(pos, def, ph)
         local box = Instance.new("TextBox", itemFrame)
         box.Size = UDim2.new(0.13, 0, 0, 22)
@@ -470,7 +587,6 @@ local function createBlockWindow()
     local gBox = addRGBInput(UDim2.new(0.67, 0, 0, 5), "255", "G")
     local bBox = addRGBInput(UDim2.new(0.82, 0, 0, 5), "255", "B")
 
-    -- Кнопка "Where?" для поиска информации по таблице
     local whereBtn = Instance.new("TextButton", itemFrame)
     whereBtn.Size = UDim2.new(0.45, 0, 0, 20)
     whereBtn.Position = UDim2.new(0.03, 0, 0, 30)
@@ -485,7 +601,6 @@ local function createBlockWindow()
 
     local function updateData()
         if ConfiguredBlocks[currentKey] then ConfiguredBlocks[currentKey] = nil end
-        
         local cleanName = string.lower(string.gsub(nameBox.Text, "^%s*(.-)%s*$", "%1"))
         currentKey = cleanName
 
@@ -501,45 +616,23 @@ local function createBlockWindow()
     rBox:GetPropertyChangedSignal("Text"):Connect(updateData)
     gBox:GetPropertyChangedSignal("Text"):Connect(updateData)
     bBox:GetPropertyChangedSignal("Text"):Connect(updateData)
-    
     updateData()
 
-    -- Логика кнопки "Where?"
     whereBtn.MouseButton1Click:Connect(function()
         local searchKey = string.lower(string.gsub(nameBox.Text, "^%s*(.-)%s*$", "%1"))
         local data = oreToWorldMap[searchKey]
-
-        print("--- Info for: [" .. nameBox.Text .. "] ---")
-        if data then
-            for _, loc in ipairs(data) do
-                print(string.format("Name: %s | World: %s | Layer: %d", loc.prettyName, loc.world, loc.layer))
-            end
-            whereBtn.Text = "Logs printed (F9)"
-            task.delay(1.5, function() whereBtn.Text = "📍 Where?" end)
-        else
-            print("Block '" .. nameBox.Text .. "' not found in oreToWorldMap.")
-            whereBtn.Text = "Not found!"
-            task.delay(1.5, function() whereBtn.Text = "📍 Where?" end)
-        end
+        createWhereWindow(nameBox.Text, data)
     end)
 end
 
--- Обработка кнопок интерфейса
-AddBtn.MouseButton1Click:Connect(function()
-    createBlockWindow()
-end)
-
+AddBtn.MouseButton1Click:Connect(function() createBlockWindow() end)
 SearchBtn.MouseButton1Click:Connect(function()
-    for _, block in ipairs(BlocksFolder:GetChildren()) do
-        applyESP(block)
-    end
+    for _, block in ipairs(BlocksFolder:GetChildren()) do applyESP(block) end
 end)
 
--- Автоматический трекер новых блоков (ChildAdded)
 BlocksFolder.ChildAdded:Connect(function(newBlock)
     task.wait(0.2)
     applyESP(newBlock)
 end)
 
--- Инициализируем одно окно по умолчанию при старте
 createBlockWindow()
