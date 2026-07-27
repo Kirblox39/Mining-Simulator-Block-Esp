@@ -287,9 +287,6 @@ local oreToWorldMap = {
         {world = "Space Adventure", layer = 6, prettyName = "Breadstone"}
     }
 }
--- ====================================================================
--- ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ И ОСНОВНОЙ НАБОР СТИЛЕЙ GUI
--- ====================================================================
 local desiredGravity = 196
 local gravityLockEnabled = true
 
@@ -306,7 +303,8 @@ local LocalPlayer = Players.LocalPlayer
 local placeId = game.PlaceId
 
 local trackedBlocks = {}
-local activeEspGuis = {}
+local activeCards = {}
+local currentMode = "ESP"
 
 local function getCharacter()
     local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -315,10 +313,15 @@ local function getCharacter()
     return character, hrp, humanoid
 end
 
-local function createNotification(text)
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    ScreenGui.IgnoreGuiInset = true
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MiningSimPlusGUI"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+local function runMainGuiWithIntro(guiFrame)
+    local IntroGui = Instance.new("ScreenGui")
+    IntroGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    IntroGui.IgnoreGuiInset = true
 
     local Note = Instance.new("TextLabel")
     Note.Size = UDim2.new(0, 320, 0, 40)
@@ -327,8 +330,8 @@ local function createNotification(text)
     Note.TextColor3 = Color3.fromRGB(255, 255, 255)
     Note.Font = Enum.Font.GothamBold
     Note.TextScaled = true
-    Note.Text = text
-    Note.Parent = ScreenGui
+    Note.Text = "Made by Watzz and Kirblox39"
+    Note.Parent = IntroGui
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 10)
@@ -341,6 +344,7 @@ local function createNotification(text)
 
     Note.BackgroundTransparency = 1
     Note.TextTransparency = 1
+    
     for i = 1, 20 do
         Note.BackgroundTransparency = 1 - (i * 0.05)
         Note.TextTransparency = 1 - (i * 0.05)
@@ -352,26 +356,19 @@ local function createNotification(text)
         Note.TextTransparency = i * 0.05
         task.wait(0.02)
     end
-    ScreenGui:Destroy()
+    IntroGui:Destroy()
+    guiFrame.Visible = true
 end
 
--- Изменено приветствие по вашей просьбе
-task.spawn(function()
-    createNotification("Made by Watzz and Kirblox39")
-end)
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MiningSimPlusGUI"
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui.ResetOnSpawn = false
-
--- Главная панель (немного увеличена по Y для размещения 4-х новых кнопок меню)
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 280, 0, 290)
 MainFrame.Position = UDim2.new(0.5, -140, 0.3, -145)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
+MainFrame.Visible = false
+MainFrame.Active = true
+MainFrame.Draggable = true
 
 local Corner = Instance.new("UICorner")
 Corner.CornerRadius = UDim.new(0, 12)
@@ -382,12 +379,9 @@ Stroke.Color = Color3.fromRGB(0, 170, 255)
 Stroke.Thickness = 2
 Stroke.Parent = MainFrame
 
-MainFrame.Active = true
-MainFrame.Draggable = true
-
 local OpenButton = Instance.new("TextButton")
 OpenButton.Size = UDim2.new(0, 30, 0, 60)
-OpenButton.Position = UDim2.new(0, 0, 0.5, -30)
+OpenButton.Position = UDim2.new(0.5, -140, 0.1, 0)
 OpenButton.Text = ">"
 OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 OpenButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
@@ -467,40 +461,12 @@ local function MakeButton(text, xPos, yPos, parentFrame, sizeX, sizeY)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, 8)
     c.Parent = btn
-
     return btn
 end
 
--- Кнопки изначального скрипта (смещены ниже под инфо-панель)
-local AutoRebirth = MakeButton("Auto Rebirth", 20, 100)
-local AutoMine = MakeButton("Auto Mine", 150, 100)
-local DupeButton = MakeButton("Dupe", 20, 140)
-local BoostFPS = MakeButton("Boost FPS", 150, 140)
-
--- Дополнительные кнопки навигации списков (ESP и WIKI)
-local EspListBtn = MakeButton("ESP Блоки", 20, 180)
-local WikiListBtn = MakeButton("WIKI Блоки", 150, 180)
-
--- Кнопка управления дополнительным окном (размещена справа на высоте кнопки X)
-local SidebarToggleBtn = Instance.new("TextButton")
-SidebarToggleBtn.Size = UDim2.new(0, 25, 0, 25)
-SidebarToggleBtn.Position = UDim2.new(1, 5, 0, 5)
-SidebarToggleBtn.Text = "<<"
-SidebarToggleBtn.Font = Enum.Font.GothamBold
-SidebarToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SidebarToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-SidebarToggleBtn.Parent = MainFrame
-
-local SideCorner = Instance.new("UICorner")
-SideCorner.CornerRadius = UDim.new(0, 6)
-SideCorner.Parent = SidebarToggleBtn
-
--- ====================================================================
--- ЧАСТЬ 2: ДОПОЛНИТЕЛЬНЫЕ ПАНЕЛИ, ЛОГИКА ESP И WIKI ОКН
--- ====================================================================
 local ListFrame = Instance.new("Frame")
-ListFrame.Size = UDim2.new(0, 280, 0, 290)
-ListFrame.Position = UDim2.new(0, -290, 0, 0)
+ListFrame.Size = UDim2.new(0, 140, 0, 290)
+ListFrame.Position = UDim2.new(0, -145, 0, 0)
 ListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 ListFrame.BorderSizePixel = 0
 ListFrame.Parent = MainFrame
@@ -515,39 +481,46 @@ ListStroke.Color = Color3.fromRGB(0, 170, 255)
 ListStroke.Thickness = 2
 ListStroke.Parent = ListFrame
 
+local ListClose = Instance.new("TextButton")
+ListClose.Size = UDim2.new(0, 18, 0, 18)
+ListClose.Position = UDim2.new(0, 5, 0, 5)
+ListClose.Text = "X"
+ListClose.TextColor3 = Color3.fromRGB(255, 100, 100)
+ListClose.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+ListClose.Font = Enum.Font.GothamBold
+ListClose.Parent = ListFrame
+ListClose.MouseButton1Click:Connect(function() ListFrame.Visible = false end)
+
 local SearchBox = Instance.new("TextBox")
-SearchBox.Size = UDim2.new(1, -20, 0, 30)
-SearchBox.Position = UDim2.new(0, 10, 0, 10)
+SearchBox.Size = UDim2.new(1, -10, 0, 25)
+SearchBox.Position = UDim2.new(0, 5, 0, 28)
 SearchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-SearchBox.PlaceholderText = "Поиск блока..."
+SearchBox.PlaceholderText = "Search..."
 SearchBox.Font = Enum.Font.Gotham
-SearchBox.TextSize = 14
+SearchBox.TextSize = 12
 SearchBox.Text = ""
 SearchBox.Parent = ListFrame
 
-local SearchCorner = Instance.new("UICorner")
-SearchCorner.CornerRadius = UDim.new(0, 6)
-SearchCorner.Parent = SearchBox
-
 local ScrollingList = Instance.new("ScrollingFrame")
-ScrollingList.Size = UDim2.new(1, -20, 1, -60)
-ScrollingList.Position = UDim2.new(0, 10, 0, 50)
+ScrollingList.Size = UDim2.new(1, -10, 1, -65)
+ScrollingList.Position = UDim2.new(0, 5, 0, 58)
 ScrollingList.BackgroundTransparency = 1
 ScrollingList.CanvasSize = UDim2.new(0, 0, 0, 0)
-ScrollingList.ScrollBarThickness = 4
+ScrollingList.ScrollBarThickness = 3
 ScrollingList.Parent = ListFrame
 
 local ListLayout = Instance.new("UIListLayout")
 ListLayout.Parent = ScrollingList
-ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ListLayout.Padding = UDim.new(0, 5)
+ListLayout.Padding = UDim.new(0, 4)
 
-local DisplayFrame = Instance.new("Frame")
-DisplayFrame.Size = UDim2.new(0, 280, 0, 290)
-DisplayFrame.Position = UDim2.new(1, 40, 0, 0)
+local DisplayFrame = Instance.new("ScrollingFrame")
+DisplayFrame.Size = UDim2.new(0, 240, 0, 290)
+DisplayFrame.Position = UDim2.new(1, 10, 0, 0)
 DisplayFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 DisplayFrame.BorderSizePixel = 0
+DisplayFrame.ScrollBarThickness = 4
+DisplayFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 DisplayFrame.Parent = MainFrame
 DisplayFrame.Visible = false
 
@@ -560,28 +533,30 @@ DisplayStroke.Color = Color3.fromRGB(0, 170, 255)
 DisplayStroke.Thickness = 2
 DisplayStroke.Parent = DisplayFrame
 
-local currentMode = "ESP" 
+local DisplayLayout = Instance.new("UIListLayout")
+DisplayLayout.Parent = DisplayFrame
+DisplayLayout.Padding = UDim.new(0, 6)
+
+local AutoRebirth = MakeButton("Auto Rebirth", 20, 100)
+local AutoMine = MakeButton("Auto Mine", 150, 100)
+local DupeButton = MakeButton("Dupe", 20, 140)
+local BoostFPS = MakeButton("Boost FPS", 150, 140)
+local EspListBtn = MakeButton("ESP Blocks", 20, 180)
+local WikiListBtn = MakeButton("WIKI Blocks", 150, 180)
 
 local function getPartToApplyEsp(blockModel)
     if not blockModel or not blockModel:IsA("Model") then return nil end
     local cp = blockModel:FindFirstChild("ColorPart")
     local p = blockModel:FindFirstChild("Part")
     local b = blockModel:FindFirstChild("Base")
-    local primary = blockModel.PrimaryPart
-    
     if cp and cp:IsA("BasePart") then return cp end
     if p and p:IsA("BasePart") then return p end
     if b and b:IsA("BasePart") then return b end
-    if primary then return primary end
-    
-    for _, child in ipairs(blockModel:GetChildren()) do
-        if child:IsA("BasePart") then return child end
-    end
-    return nil
+    if blockModel.PrimaryPart then return blockModel.PrimaryPartend
+    return blockModel:FindFirstChildOfClass("BasePart")
 end
 
 local function removeEspFromBlock(blockModel)
-    if not blockModel then return end
     local target = getPartToApplyEsp(blockModel)
     if target then
         local old = target:FindFirstChild("BlockEspGui")
@@ -590,16 +565,15 @@ local function removeEspFromBlock(blockModel)
 end
 
 local function applyEspToBlock(blockModel, nameLower, config)
-    if not blockModel or not config.enabled then return end
+    if not blockModel or not config or not config.enabled then return end
     local target = getPartToApplyEsp(blockModel)
     if not target then return end
     
-    local old = target:FindFirstChild("BlockEspGui")
-    if old then old:Destroy() end
+    removeEspFromBlock(blockModel)
     
     local bgui = Instance.new("BillboardGui")
     bgui.Name = "BlockEspGui"
-    bgui.Size = UDim2.new(0, 16, 0, 16)
+    bgui.Size = UDim2.new(0, 14, 0, 14)
     bgui.AlwaysOnTop = true
     
     local f = Instance.new("Frame")
@@ -614,180 +588,165 @@ local function applyEspToBlock(blockModel, nameLower, config)
     bgui.Parent = target
 end
 
-local function clearAllEspForBlock(nameLower)
-    trackedBlocks[nameLower].enabled = false
+local function updateAllEspForBlock(nameLower)
+    local config = trackedBlocks[nameLower]
     local blocksFolder = workspace:FindFirstChild("Blocks")
-    if blocksFolder then
-        for _, b in ipairs(blocksFolder:GetChildren()) do
-            if b.Name:lower() == nameLower then
+    if not blocksFolder then return end
+    
+    for _, b in ipairs(blocksFolder:GetChildren()) do
+        if b.Name:lower() == nameLower then
+            if config and config.enabled then
+                applyEspToBlock(b, nameLower, config)
+            else
                 removeEspFromBlock(b)
             end
         end
     end
 end
 
-local function applyAllEspForBlock(nameLower)
-    local config = trackedBlocks[nameLower]
-    if not config or not config.enabled then return end
-    local blocksFolder = workspace:FindFirstChild("Blocks")
-    if blocksFolder then
-        for _, b in ipairs(blocksFolder:GetChildren()) do
-            if b.Name:lower() == nameLower then
-                applyEspToBlock(b, nameLower, config)
-            end
+local function refreshDisplayLayoutSize()
+    local totalHeight = 0
+    for _, child in ipairs(DisplayFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            totalHeight = totalHeight + child.Size.Y.Offset + 6
         end
     end
+    DisplayFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)
 end
 
-local function updateDisplayWindow(nameLower)
-    for _, c in ipairs(DisplayFrame:GetChildren()) do
-        if not c:IsA("UIStroke") and not c:IsA("UICorner") then c:Destroy() end
-    end
+local function createActiveCard(nameLower)
+    if activeCards[nameLower] then return end
+    DisplayFrame.Visible = true
     
     local data = oreToWorldMap[nameLower]
-    local pName = (data and data[1] and data[1].prettyName) or nameLower:sub(1,1):upper()..nameLower:sub(2)
+    local pName = (data and data.prettyName) or nameLower:sub(1,1):upper()..nameLower:sub(2)
     
-    local CloseDisp = Instance.new("TextButton")
-    CloseDisp.Size = UDim2.new(0, 20, 0, 20)
-    CloseDisp.Position = UDim2.new(1, -25, 0, 5)
-    CloseDisp.Text = "X"
-    CloseDisp.TextColor3 = Color3.fromRGB(255, 100, 100)
-    CloseDisp.BackgroundTransparency = 1
-    CloseDisp.Font = Enum.Font.GothamBold
-    CloseDisp.TextSize = 14
-    CloseDisp.Parent = DisplayFrame
-    CloseDisp.MouseButton1Click:Connect(function() DisplayFrame.Visible = false end)
+    local CardFrame = Instance.new("Frame")
+    CardFrame.Size = UDim2.new(1, -10, 0, currentMode == "ESP" and 110 or 80)
+    CardFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    CardFrame.Parent = DisplayFrame
     
-    local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Size = UDim2.new(1, -30, 0, 30)
-    TitleLabel.Position = UDim2.new(0, 10, 0, 10)
-    TitleLabel.BackgroundTransparency = 1
-    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TitleLabel.Font = Enum.Font.GothamBold
-    TitleLabel.TextSize = 16
-    TitleLabel.Text = pName
-    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLabel.Parent = DisplayFrame
-
+    local cc = Instance.new("UICorner")
+    cc.CornerRadius = UDim.new(0, 8)
+    cc.Parent = CardFrame
+    
+    activeCards[nameLower] = CardFrame
+    
+    local CardClose = Instance.new("TextButton")
+    CardClose.Size = UDim2.new(0, 16, 0, 16)
+    CardClose.Position = UDim2.new(1, -22, 0, 6)
+    CardClose.Text = "X"
+    CardClose.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CardClose.BackgroundTransparency = 1
+    CardClose.Font = Enum.Font.GothamBold
+    CardClose.Parent = CardFrame
+    CardClose.MouseButton1Click:Connect(function()
+        CardFrame:Destroy()
+        activeCards[nameLower] = nil
+        refreshDisplayLayoutSize()
+        if next(activeCards) == nil then DisplayFrame.Visible = false end
+    end)
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, -30, 0, 20)
+    Title.Position = UDim2.new(0, 8, 0, 4)
+    Title.BackgroundTransparency = 1
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 13
+    Title.Text = pName
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = CardFrame
+    
     if currentMode == "ESP" then
         if not trackedBlocks[nameLower] then
-            trackedBlocks[nameLower] = {enabled = false, color = Color3.fromRGB(255, 0, 0)}
-        end
-        local config = trackedBlocks[nameLower]
-        
-        local StatusBtn = MakeButton(config.enabled and "Отслеживание: ВКЛ" or "Отслеживание: ВЫКЛ", 10, 50, DisplayFrame, 260, 30)
-        StatusBtn.BackgroundColor3 = config.enabled and Color3.fromRGB(0, 180, 100) or Color3.fromRGB(180, 50, 50)
-        
-        StatusBtn.MouseButton1Click:Connect(function()
-            config.enabled = not config.enabled
-            if config.enabled then
-                StatusBtn.Text = "Отслеживание: ВКЛ"
-                StatusBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
-                applyAllEspForBlock(nameLower)
-            else
-                StatusBtn.Text = "Отслеживание: ВЫКЛ"
-                StatusBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-                clearAllEspForBlock(nameLower)
-            end
-        end)
-        
-        local ColorLabel = Instance.new("TextLabel")
-        ColorLabel.Size = UDim2.new(1, -20, 0, 25)
-        ColorLabel.Position = UDim2.new(0, 10, 0, 95)
-        ColorLabel.BackgroundTransparency = 1
-        ColorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        ColorLabel.Font = Enum.Font.Gotham
-        ColorLabel.TextSize = 14
-        ColorLabel.Text = "Настройка цвета (RGB от 0 до 255):"
-        ColorLabel.TextXAlignment = Enum.TextXAlignment.Left
-        ColorLabel.Parent = DisplayFrame
-        
-        local function makeRgbBox(xPos, colorVal, labelTxt)
-            local box = Instance.new("TextBox")
-            box.Size = UDim2.new(0, 70, 0, 30)
-            box.Position = UDim2.new(0, xPos, 0, 125)
-            box.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-            box.TextColor3 = Color3.fromRGB(255, 255, 255)
-            box.Text = tostring(math.floor(colorVal * 255))
-            box.Font = Enum.Font.Gotham
-            box.TextSize = 14
-            box.Parent = DisplayFrame
-            
-            local c = Instance.new("UICorner")
-            c.CornerRadius = UDim.new(0, 6)
-            c.Parent = box
-            
-            local l = Instance.new("TextLabel")
-            l.Size = UDim2.new(0, 15, 0, 30)
-            l.Position = UDim2.new(0, xPos - 18, 0, 125)
-            l.BackgroundTransparency = 1
-            l.TextColor3 = Color3.fromRGB(255, 255, 255)
-            l.Text = labelTxt
-            l.Font = Enum.Font.GothamBold
-            l.TextSize = 12
-            l.Parent = DisplayFrame
-            
-            return box
-        end
-        
-        local rBox = makeRgbBox(28, config.color.R, "R")
-        local gBox = makeRgbBox(116, config.color.G, "G")
-        local bBox = makeRgbBox(204, config.color.B, "B")
-        
-        local SaveColorBtn = MakeButton("Применить Цвет", 10, 170, DisplayFrame, 260, 30)
-        SaveColorBtn.MouseButton1Click:Connect(function()
-            local r = tonumber(rBox.Text) or 255
-            local g = tonumber(gBox.Text) or 0
-            local b = tonumber(bBox.Text) or 0
-            config.color = Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
-            if config.enabled then
-                applyAllEspForBlock(nameLower)
-            end
-        end)
-    elseif currentMode == "WIKI" then
-        local InfoScroll = Instance.new("ScrollingFrame")
-        InfoScroll.Size = UDim2.new(1, -20, 1, -50)
-        InfoScroll.Position = UDim2.new(0, 10, 0, 45)
-        InfoScroll.BackgroundTransparency = 1
-        InfoScroll.ScrollBarThickness = 3
-        InfoScroll.Parent = DisplayFrame
-        
-        local scrollLayout = Instance.new("UIListLayout")
-        scrollLayout.Padding = UDim.new(0, 5)
-        scrollLayout.Parent = InfoScroll
-        
-        if data then
-            for _, info in ipairs(data) do
-                local ItemLabel = Instance.new("TextLabel")
--- ====================================================================
--- ЧАСТЬ 3: ЗАВЕРШЕНИЕ РЕНДЕРИНГА WIKI И ЛОГИКА ОТСЛЕЖИВАНИЯ БЛОКОВ
--- ====================================================================
-                local ItemLabel = Instance.new("TextLabel")
-                ItemLabel.Size = UDim2.new(1, 0, 0, 40)
-                ItemLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-                ItemLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                ItemLabel.Font = Enum.Font.Gotham
-                ItemLabel.TextSize = 13
-                ItemLabel.Text = string.format("Мир: %s\nСлой: %d", info.world, info.layer)
-                ItemLabel.Parent = InfoScroll
-                
-                local ic = Instance.new("UICorner")
-                ic.CornerRadius = UDim.new(0, 6)
-                ic.Parent = ItemLabel
-            end
-            InfoScroll.CanvasSize = UDim2.new(0, 0, 0, #data * 45)
+            trackedBlocks[nameLower] = {enabled = true, color = Color3.fromRGB(0, 170, 255)}
         else
-            local NoData = Instance.new("TextLabel")
-            NoData.Size = UDim2.new(1, 0, 0, 30)
-            NoData.BackgroundTransparency = 1
-            NoData.TextColor3 = Color3.fromRGB(150, 150, 150)
-            NoData.Font = Enum.Font.Gotham
-            NoData.TextSize = 13
-            NoData.Text = "Данные о мире отсутствуют."
-            NoData.Parent = InfoScroll
+            trackedBlocks[nameLower].enabled = true
         end
+        updateAllEspForBlock(nameLower)
+        
+        local OptBtn = Instance.new("TextButton")
+        OptBtn.Size = UDim2.new(1, -16, 0, 24)
+        OptBtn.Position = UDim2.new(0, 8, 0, 28)
+        OptBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+        OptBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        OptBtn.Font = Enum.Font.GothamBold
+        OptBtn.TextSize = 11
+        OptBtn.Text = "ESP: ON"
+        OptBtn.Parent = CardFrame
+        Instance.new("UICorner", OptBtn).CornerRadius = UDim.new(0, 4)
+        
+        OptBtn.MouseButton1Click:Connect(function()
+            trackedBlocks[nameLower].enabled = not trackedBlocks[nameLower].enabled
+            if trackedBlocks[nameLower].enabled then
+                OptBtn.Text = "ESP: ON"
+                OptBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+            else
+                OptBtn.Text = "ESP: OFF"
+                OptBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+            end
+            updateAllEspForBlock(nameLower)
+        end)
+        
+        local function makeRgb(x, val)
+            local b = Instance.new("TextBox")
+            b.Size = UDim2.new(0, 45, 0, 22)
+            b.Position = UDim2.new(0, x, 0, 58)
+            b.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            b.TextColor3 = Color3.fromRGB(255, 255, 255)
+            b.Text = tostring(math.floor(val * 255))
+            b.Font = Enum.Font.Gotham
+            b.TextSize = 11
+            b.Parent = CardFrame
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+            return b
+        end
+        
+        local rB = makeRgb(8, trackedBlocks[nameLower].color.R)
+        local gB = makeRgb(60, trackedBlocks[nameLower].color.G)
+        local bB = makeRgb(112, trackedBlocks[nameLower].color.B)
+        
+        local AppColor = Instance.new("TextButton")
+        AppColor.Size = UDim2.new(0, 60, 0, 22)
+        AppColor.Position = UDim2.new(0, 164, 0, 58)
+        AppColor.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        AppColor.TextColor3 = Color3.fromRGB(255, 255, 255)
+        AppColor.Text = "Set"
+        AppColor.Font = Enum.Font.GothamBold
+        AppColor.TextSize = 11
+        AppColor.Parent = CardFrame
+        Instance.new("UICorner", AppColor).CornerRadius = UDim.new(0, 4)
+        
+        AppColor.MouseButton1Click:Connect(function()
+            local r = tonumber(rB.Text) or 255
+            local g = tonumber(gB.Text) or 0
+            local b = tonumber(bB.Text) or 0
+            trackedBlocks[nameLower].color = Color3.fromRGB(math.clamp(r,0,255), math.clamp(g,0,255), math.clamp(b,0,255))
+            updateAllEspForBlock(nameLower)
+        end)
+    else
+        local InfoTxt = Instance.new("TextLabel")
+        InfoTxt.Size = UDim2.new(1, -16, 0, 45)
+        InfoTxt.Position = UDim2.new(0, 8, 0, 28)
+        InfoTxt.BackgroundTransparency = 1
+        InfoTxt.TextColor3 = Color3.fromRGB(220, 220, 220)
+        InfoTxt.Font = Enum.Font.Gotham
+        InfoTxt.TextSize = 11
+        InfoTxt.TextWrapped = true
+        
+        if data and #data > 0 then
+            local str = ""
+            for _, info in ipairs(data) do
+                str = str .. string.format("World: %s | Layer: %d\n", info.world, info.layer)
+            end
+            InfoTxt.Text = str
+        else
+            InfoTxt.Text = "Location data unavailable."
+        end
+        InfoTxt.Parent = CardFrame
     end
-    DisplayFrame.Visible = true
+    refreshDisplayLayoutSize()
 end
 
 local function populateList()
@@ -799,67 +758,57 @@ local function populateList()
     local blocksFolder = workspace:FindFirstChild("Blocks")
     if blocksFolder then
         for _, b in ipairs(blocksFolder:GetChildren()) do
-            local nameL = b.Name:lower()
-            counts[nameL] = (counts[nameL] or 0) + 1
+            local nl = b.Name:lower()
+            counts[nl] = (counts[nl] or 0) + 1
         end
     end
     
     local sortedList = {}
-    for nameLower, info in pairs(oreToWorldMap) do
-        table.insert(sortedList, nameLower)
-    end
+    for k in pairs(oreToWorldMap) do table.insert(sortedList, k) end
     table.sort(sortedList)
     
     local filter = SearchBox.Text:lower()
-    local index = 0
+    local idx = 0
     
     for _, nameL in ipairs(sortedList) do
         local data = oreToWorldMap[nameL]
-        local prettyName = (data and data[1] and data[1].prettyName) or nameL:sub(1,1):upper()..nameL:sub(2)
+        local pName = (data and data.prettyName) or nameL:sub(1,1):upper()..nameL:sub(2)
         local count = counts[nameL] or 0
         
-        if filter == "" or prettyName:lower():find(filter) or nameL:find(filter) then
-            index = index + 1
-            
+        if filter == "" or pName:lower():find(filter) or nameL:find(filter) then
+            idx = idx + 1
             local ItemBtn = Instance.new("TextButton")
-            ItemBtn.Size = UDim2.new(1, -5, 0, 30)
+            ItemBtn.Size = UDim2.new(1, -4, 0, 26)
             ItemBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-            ItemBtn.TextColor3 = count > 0 and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 120, 120)
+            ItemBtn.TextColor3 = count > 0 and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(110, 110, 110)
             ItemBtn.Font = Enum.Font.Gotham
-            ItemBtn.TextSize = 13
-            ItemBtn.Text = string.format("  %s (%d)", prettyName, count)
+            ItemBtn.TextSize = 11
+            ItemBtn.Text = string.format("  %s (%d)", pName, count)
             ItemBtn.TextXAlignment = Enum.TextXAlignment.Left
             ItemBtn.Parent = ScrollingList
-            
-            local ic = Instance.new("UICorner")
-            ic.CornerRadius = UDim.new(0, 6)
-            ic.Parent = ItemBtn
+            Instance.new("UICorner", ItemBtn).CornerRadius = UDim.new(0, 4)
             
             ItemBtn.MouseButton1Click:Connect(function()
-                updateDisplayWindow(nameL)
+                createActiveCard(nameL)
             end)
         end
     end
-    ScrollingList.CanvasSize = UDim2.new(0, 0, 0, index * 35)
+    ScrollingList.CanvasSize = UDim2.new(0, 0, 0, idx * 30)
 end
 
 SearchBox:GetPropertyChangedSignal("Text"):Connect(populateList)
 
 task.spawn(function()
     while task.wait(3) do
-        if ListFrame.Visible then
-            populateList()
-        end
+        if ListFrame.Visible then populateList() end
     end
 end)
 
-local bFolder = workspace:WaitForChild("Blocks")
-bFolder.ChildAdded:Connect(function(child)
+workspace:WaitForChild("Blocks").ChildAdded:Connect(function(child)
     task.wait()
-    local nLower = child.Name:lower()
-    local config = trackedBlocks[nLower]
-    if config and config.enabled then
-        applyEspToBlock(child, nLower, config)
+    local nl = child.Name:lower()
+    if trackedBlocks[nl] and trackedBlocks[nl].enabled then
+        applyEspToBlock(child, nl, trackedBlocks[nl])
     end
 end)
 
@@ -875,24 +824,272 @@ WikiListBtn.MouseButton1Click:Connect(function()
     populateList()
 end)
 
-SidebarToggleBtn.MouseButton1Click:Connect(function()
-    if SidebarToggleBtn.Text == "<<" then
-        SidebarToggleBtn.Text = ">>"
-        DisplayFrame.Visible = false
-        ListFrame.Visible = false
-        SidebarToggleBtn.Position = UDim2.new(1, -30, 0, 5)
-    else
-        SidebarToggleBtn.Text = "<<"
-        SidebarToggleBtn.Position = UDim2.new(1, 5, 0, 5)
+local function startTelepadRebirth()
+    if getgenv().MS_AUTO_RUNNING then warn("Auto Rebirth already running") return end
+    getgenv().MS_AUTO_RUNNING = true
+    getgenv().Name = getgenv().Name or " "
+
+    local SellThreshold = getgenv().SellThreshold or 30000
+    local Depth = getgenv().Depth or 260
+    local SellArea = CFrame.new(41.96064, 14, -1239.64648)
+    local Collapse = false
+    local ScriptIsBroken = false
+    local Counter = 0
+    local TeleportPos
+
+    local virtual = game:GetService("VirtualUser")
+    LocalPlayer.Idled:Connect(function()
+        virtual:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        virtual:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+
+    local screenGui = LocalPlayer.PlayerGui:WaitForChild("ScreenGui")
+    
+    pcall(function() screenGui.TeleporterFrame:Destroy() end)
+    pcall(function() screenGui.StatsFrame.Sell:Destroy() end)
+    pcall(function() screenGui.MainButtons.Surface:Destroy() end)
+
+    local character, hrp, humanoid = getCharacter()
+    pcall(function()
+        character.Head.CustomPlayerTag.PlayerName.Text = getgenv().Name
+        character.Head.CustomPlayerTag.MinerRank.Text = "Made By Watzz"
+    end)
+
+    local Remote = nil
+    pcall(function()
+        local netFunc = game:GetService("ReplicatedStorage"):FindFirstChild("Network")
+        if netFunc and netFunc:IsA("RemoteFunction") then
+            local serverEvent, _ = netFunc:InvokeServer()
+            if serverEvent and serverEvent:IsA("RemoteEvent") then
+                Remote = serverEvent
+            end
+        end
+    end)
+
+    if not Remote then
+        LocalPlayer:Kick("Failed to secure RemoteEvent bypass.")
+        return
     end
-end)
 
-CloseButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    OpenButton.Visible = true
-end)
+    pcall(function() Remote.OnClientEvent:Connect(function() return nil end) end)
 
-OpenButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = true
-    OpenButton.Visible = false
-end)
+    local function refreshCharacter()
+        character, hrp, humanoid = getCharacter()
+        return character, hrp, humanoid
+    end
+
+    local function split(s, del)
+        local res = {}
+        for match in (s .. del):gmatch("(.-)" .. del) do table.insert(res, match) end
+        return res
+    end
+
+    local function getDepthAmount()
+        local lbl = screenGui:FindFirstChild("TopInfoFrame") and screenGui.TopInfoFrame:FindFirstChild("Depth")
+        if not lbl then return 0 end
+        return tonumber(split(lbl.Text, " ")[1]) or 0
+    end
+
+    local CoinsAmount = LocalPlayer.leaderstats.Coins
+    local function getCoinsAmount()
+        return tonumber(tostring(CoinsAmount.Value):gsub(",", "")) or 0
+    end
+
+    local function getInventoryAmount()
+        local amount
+        pcall(function() amount = screenGui.StatsFrame2.Inventory.Amount.Text end)
+        if not amount then
+            pcall(function() amount = character.Backpack.Decore.Count.SurfaceGui.Amount.Text end)
+        end
+        amount = tostring(amount or "0"):gsub("%s+", ""):gsub(",", "")
+        return tonumber(amount:split("/")[1]) or 0
+    end
+
+    local function setPlatformStand(state)
+        refreshCharacter()
+        humanoid.PlatformStand = state
+        for _, obj in ipairs(character:GetDescendants()) do
+            if obj:IsA("BasePart") then obj.CanCollide = false end
+        end
+    end
+
+    local function hardSetCFrame(cframe, anchored)
+        refreshCharacter()
+        hrp.Anchored = true
+        setPlatformStand(true)
+        hrp.CFrame = cframe
+        RunService.Stepped:Wait()
+        hrp.Anchored = anchored == true
+    end
+
+    local function softSetCFrame(cframe)
+        refreshCharacter()
+        setPlatformStand(true)
+        hrp.Anchored = false
+        hrp.CFrame = cframe
+        RunService.Stepped:Wait()
+    end
+
+    local function moveToLavaStart()
+        refreshCharacter()
+        gravityLockEnabled = false
+        workspace.Gravity = 1000
+        humanoid.WalkSpeed = 0
+        humanoid.JumpPower = 0
+        hrp.Anchored = true
+        setPlatformStand(true)
+        Remote:FireServer("MoveTo", {{"LavaSpawn"}})
+        task.wait(1)
+        hrp.Anchored = false
+
+        while hrp.Position.Z > 26220 do
+            hardSetCFrame(CFrame.new(Vector3.new(hrp.Position.X, 13.05, hrp.Position.Z - 0.5)), false)
+            task.wait()
+        end
+        hardSetCFrame(CFrame.new(18, 10, 26220), false)
+        workspace.Gravity = desiredGravity
+        gravityLockEnabled = true
+    end
+
+    local function digToDepth()
+        refreshCharacter()
+        while getDepthAmount() < Depth and hrp.Position.Y > -2430 do
+            local min = hrp.CFrame + Vector3.new(-1, -10, -1)
+            local max = hrp.CFrame + Vector3.new(1, 0, 1)
+            local parts = workspace:FindPartsInRegion3WithWhiteList(Region3.new(min.Position, max.Position), {workspace.Blocks}, 5)
+            for _, block in pairs(parts) do
+                Remote:FireServer("MineBlock", {{block.Parent}})
+                RunService.Stepped:Wait()
+            end
+            task.wait()
+        end
+    end
+
+    local function placeTelepadAt(pos)
+        refreshCharacter()
+        hardSetCFrame(CFrame.new(pos), true)
+        Remote:FireServer("RemovePad", {{}})
+        task.wait(0.1)
+        Remote:FireServer("PlaceTeleporter", {{pos}})
+        task.wait(0.25)
+        Remote:FireServer("TeleportToPad", {{}})
+        task.wait(0.25)
+        TeleportPos = hrp.Position
+    end
+
+    local function returnToTelepad()
+        refreshCharacter()
+        hrp.Anchored = true
+        setPlatformStand(true)
+        for _ = 1, 30 do
+            Remote:FireServer("TeleportToPad", {{}})
+            RunService.Stepped:Wait()
+            if TeleportPos and (hrp.Position - TeleportPos).Magnitude <= 6 then return true end
+        end
+        return false
+    end
+
+    local function resetTelepadAtStart()
+        placeTelepadAt(Vector3.new(18, 10, 26220))
+    end
+
+    local function fullDepthSetup()
+        moveToLavaStart()
+        digToDepth()
+        refreshCharacter()
+        placeTelepadAt(hrp.CFrame.Position)
+    end
+
+    fullDepthSetup()
+
+    local RebirthsAmount = LocalPlayer.leaderstats.Rebirths
+    local blocksMined = LocalPlayer.leaderstats:FindFirstChild("Blocks Mined")
+    if blocksMined then
+        blocksMined:GetPropertyChangedSignal("Value"):Connect(function() Counter = 0 end)
+    end
+
+    workspace.Collapsed.Changed:Connect(function()
+        if workspace.Collapsed.Value == true then
+            Collapse = true
+            setPlatformStand(false)
+            refreshCharacter()
+            hrp.Anchored = true
+            task.wait(1)
+            hrp.Anchored = false
+            fullDepthSetup()
+            Counter = 0
+            Collapse = false
+        end
+    end)
+
+    task.spawn(function()
+        while getgenv().MS_AUTO_RUNNING do
+            task.wait(1)
+            Counter = Counter + 1
+            if Counter >= 10 then
+                if not Collapse and not ScriptIsBroken then
+                    ScriptIsBroken = true
+                    resetTelepadAtStart()
+                    Counter = 0
+                    ScriptIsBroken = false
+                else
+                    Counter = 0
+                end
+            end
+        end
+    end)
+
+    local function rebirthLoop()
+        setPlatformStand(true)
+        while getgenv().MS_AUTO_RUNNING do
+            refreshCharacter()
+            if not Collapse and not ScriptIsBroken then
+                local params = OverlapParams.new()
+                params.FilterType = Enum.RaycastFilterType.Include
+                params.FilterDescendantsInstances = {workspace.Blocks}
+
+                local parts = workspace:GetPartBoundsInBox(hrp.CFrame, Vector3.new(10, 10, 10), params)
+                if parts then
+                    for _, block in pairs(parts) do
+                        if Collapse or ScriptIsBroken then break end
+                        if block:IsA("BasePart") and block.Parent then
+                            Remote:FireServer("MineBlock", {{block.Parent}})
+                        end
+
+                        if getInventoryAmount() >= SellThreshold then
+                            while getInventoryAmount() >= SellThreshold and not Collapse and not ScriptIsBroken do
+                                softSetCFrame(SellArea)
+                                task.wait()
+                                Remote:FireServer("SellItems", {{}})
+                                task.wait()
+                            end
+
+                            while getCoinsAmount() >= (10000000 * (RebirthsAmount.Value + 1)) and not Collapse and not ScriptIsBroken do
+                                Remote:FireServer("Rebirth", {{}})
+                                task.wait()
+                            end
+
+                            if not returnToTelepad() then resetTelepadAtStart() end
+                            setPlatformStand(true)
+                        end
+                        task.wait()
+                    end
+                else
+                    if not Collapse and not ScriptIsBroken then resetTelepadAtStart() end
+                end
+            end
+            RunService.Stepped:Wait()
+        end
+    end
+    rebirthLoop()
+end
+
+AutoRebirth.MouseButton1Click:Connect(function() task.spawn(startTelepadRebirth) end)
+AutoMine.MouseButton1Click:Connect(function() loadstring(game:HttpGet("https://githubusercontent.com"))() end)
+DupeButton.MouseButton1Click:Connect(function() loadstring(game:HttpGet("https://githubusercontent.com"))() end)
+
+CloseButton.MouseButton1Click:Connect(function() MainFrame.Visible = false OpenButton.Visible = true end)
+OpenButton.MouseButton1Click:Connect(function() MainFrame.Visible = true OpenButton.Visible = false end)
+
+task.spawn(function() runMainGuiWithIntro(MainFrame) end)
