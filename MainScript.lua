@@ -1,5 +1,8 @@
 -- Инициализация глобальной базы данных руд
-local oreToWorldMap = {
+print("hope it work")
+local oreToWorldMap = {}
+print("print()")
+oreToWorldMap = {
     -- БАЗОВЫЕ И ДОРОГИЕ БЛОКИ МИРОВ
     ["stone"] = {{world = "Home World", layer = 0, prettyName = "Stone"}},
     ["dirt"] = {{world = "Home World", layer = 1, prettyName = "Dirt"}},
