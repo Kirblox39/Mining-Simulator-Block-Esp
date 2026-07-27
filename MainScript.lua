@@ -287,352 +287,612 @@ local oreToWorldMap = {
         {world = "Space Adventure", layer = 6, prettyName = "Breadstone"}
     }
 }
-local Workspace = game:GetService("Workspace")
-local CoreGui = game:GetService("CoreGui")
-local Players = game:GetService("Players")
-local BlocksFolder = Workspace:FindFirstChild("Blocks")
-local LocalPlayer = Players.LocalPlayer
+-- ====================================================================
+-- ЧАСТЬ 1: ИНИЦИАЛИЗАЦИЯ И ОСНОВНОЙ НАБОР СТИЛЕЙ GUI
+-- ====================================================================
+local desiredGravity = 196
+local gravityLockEnabled = true
 
-if not BlocksFolder then
-    warn("Папка 'Blocks' не найдена в Workspace!")
-    return
+game:GetService("RunService").Stepped:Connect(function()
+    if gravityLockEnabled and workspace.Gravity ~= desiredGravity then
+        workspace.Gravity = desiredGravity
+    end
+end)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local LocalPlayer = Players.LocalPlayer
+local placeId = game.PlaceId
+
+local trackedBlocks = {}
+local activeEspGuis = {}
+
+local function getCharacter()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    return character, hrp, humanoid
 end
 
--- Создание глобального контейнера для ESP в CoreGui (чтобы не пропадали)
-local EspContainer = CoreGui:FindFirstChild("DeltaEspContainer") or Instance.new("Folder", CoreGui)
-EspContainer.Name = "DeltaEspContainer"
+local function createNotification(text)
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    ScreenGui.IgnoreGuiInset = true
 
-local ScreenGui = Instance.new("ScreenGui", CoreGui)
-ScreenGui.Name = "DeltaOreSearcherV2"
+    local Note = Instance.new("TextLabel")
+    Note.Size = UDim2.new(0, 320, 0, 40)
+    Note.Position = UDim2.new(0.5, -160, 0.1, -20)
+    Note.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Note.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Note.Font = Enum.Font.GothamBold
+    Note.TextScaled = true
+    Note.Text = text
+    Note.Parent = ScreenGui
 
--- ГЛАВНОЕ ОКНО
-local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Size = UDim2.new(0, 350, 0, 400)
-MainFrame.Position = UDim2.new(0.1, 0, 0.25, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = Note
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 170, 255)
+    stroke.Thickness = 2
+    stroke.Parent = Note
+
+    Note.BackgroundTransparency = 1
+    Note.TextTransparency = 1
+    for i = 1, 20 do
+        Note.BackgroundTransparency = 1 - (i * 0.05)
+        Note.TextTransparency = 1 - (i * 0.05)
+        task.wait(0.02)
+    end
+    task.wait(3)
+    for i = 1, 20 do
+        Note.BackgroundTransparency = i * 0.05
+        Note.TextTransparency = i * 0.05
+        task.wait(0.02)
+    end
+    ScreenGui:Destroy()
+end
+
+-- Изменено приветствие по вашей просьбе
+task.spawn(function()
+    createNotification("Made by Watzz and Kirblox39")
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MiningSimPlusGUI"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+-- Главная панель (немного увеличена по Y для размещения 4-х новых кнопок меню)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 280, 0, 290)
+MainFrame.Position = UDim2.new(0.5, -140, 0.3, -145)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 12)
+Corner.Parent = MainFrame
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(0, 170, 255)
+Stroke.Thickness = 2
+Stroke.Parent = MainFrame
+
 MainFrame.Active = true
 MainFrame.Draggable = true
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
--- Шапка главного окна (для перетаскивания и кнопок)
-local Header = Instance.new("Frame", MainFrame)
-Header.Size = UDim2.new(1, 0, 0, 40)
-Header.BackgroundTransparency = 1
+local OpenButton = Instance.new("TextButton")
+OpenButton.Size = UDim2.new(0, 30, 0, 60)
+OpenButton.Position = UDim2.new(0, 0, 0.5, -30)
+OpenButton.Text = ">"
+OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+OpenButton.Parent = ScreenGui
+OpenButton.Visible = false
 
-local Title = Instance.new("TextLabel", Header)
-Title.Size = UDim2.new(0.7, 0, 1, 0)
-Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Ore Searcher & ESP"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 16
-Title.Font = Enum.Font.SourceSansBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.BackgroundTransparency = 1
+local OpenCorner = Instance.new("UICorner")
+OpenCorner.CornerRadius = UDim.new(0, 6)
+OpenCorner.Parent = OpenButton
 
--- Кнопка Свернуть/Развернуть главное окно
-local ToggleMainBtn = Instance.new("TextButton", Header)
-ToggleMainBtn.Size = UDim2.new(0, 30, 0, 30)
-ToggleMainBtn.Position = UDim2.new(1, -40, 0.5, -15)
-ToggleMainBtn.Text = "—"
-ToggleMainBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-ToggleMainBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-ToggleMainBtn.Font = Enum.Font.SourceSansBold
-ToggleMainBtn.TextSize = 16
-Instance.new("UICorner", ToggleMainBtn).CornerRadius = UDim.new(0, 4)
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 25, 0, 25)
+CloseButton.Position = UDim2.new(1, -30, 0, 5)
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+CloseButton.Parent = MainFrame
 
--- Контент главного окна (все что ниже шапки)
-local MainContent = Instance.new("Frame", MainFrame)
-MainContent.Size = UDim2.new(1, 0, 1, -40)
-MainContent.Position = UDim2.new(0, 0, 0, 40)
-MainContent.BackgroundTransparency = 1
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseButton
 
-local collapsed = false
-ToggleMainBtn.MouseButton1Click:Connect(function()
-    collapsed = not collapsed
-    MainContent.Visible = not collapsed
-    MainFrame.Size = collapsed and UDim2.new(0, 350, 0, 40) or UDim2.new(0, 350, 0, 400)
-    ToggleMainBtn.Text = collapsed and "＋" or "—"
-end)
+local GameThumbnail = Instance.new("ImageLabel")
+GameThumbnail.Size = UDim2.new(0, 60, 0, 60)
+GameThumbnail.Position = UDim2.new(0, 10, 0, 10)
+GameThumbnail.BackgroundTransparency = 1
+GameThumbnail.Parent = MainFrame
 
--- Элементы управления внутри контента
-local AddBtn = Instance.new("TextButton", MainContent)
-AddBtn.Size = UDim2.new(0.44, 0, 0, 35)
-AddBtn.Position = UDim2.new(0.04, 0, 0, 5)
-AddBtn.Text = "+ Add Block"
-AddBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AddBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 40)
-AddBtn.Font = Enum.Font.SourceSansBold
-AddBtn.TextSize = 14
-Instance.new("UICorner", AddBtn).CornerRadius = UDim.new(0, 5)
+local GameTitle = Instance.new("TextLabel")
+GameTitle.Size = UDim2.new(0, 200, 0, 30)
+GameTitle.Position = UDim2.new(0, 80, 0, 10)
+GameTitle.BackgroundTransparency = 1
+GameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+GameTitle.TextScaled = true
+GameTitle.Font = Enum.Font.GothamBold
+GameTitle.Text = "Mining Simulator"
+GameTitle.Parent = MainFrame
 
-local SearchBtn = Instance.new("TextButton", MainContent)
-SearchBtn.Size = UDim2.new(0.44, 0, 0, 35)
-SearchBtn.Position = UDim2.new(0.52, 0, 0, 5)
-SearchBtn.Text = "🔍 Search"
-SearchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SearchBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 160)
-SearchBtn.Font = Enum.Font.SourceSansBold
-SearchBtn.TextSize = 14
-Instance.new("UICorner", SearchBtn).CornerRadius = UDim.new(0, 5)
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Size = UDim2.new(0, 200, 0, 40)
+InfoLabel.Position = UDim2.new(0, 80, 0, 50)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+InfoLabel.TextScaled = true
+InfoLabel.TextWrapped = true
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.Text = "Ping: ...\nServer: ..."
+InfoLabel.Parent = MainFrame
 
-local ScrollFrame = Instance.new("ScrollingFrame", MainContent)
-ScrollFrame.Size = UDim2.new(0.92, 0, 0, 295)
-ScrollFrame.Position = UDim2.new(0.04, 0, 0, 55)
-ScrollFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-ScrollFrame.ScrollBarThickness = 5
-Instance.new("UICorner", ScrollFrame).CornerRadius = UDim.new(0, 5)
-
-local UIListLayout = Instance.new("UIListLayout", ScrollFrame)
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UIListLayout.Padding = UDim.new(0, 5)
-
-UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
-end)
-
-local ConfiguredBlocks = {}
-
-local function getValidPart(block)
-    local part = block:FindFirstChild("ColorPart") or block:FindFirstChild("Part")
-    if not part then
-        for _, child in ipairs(block:GetChildren()) do
-            if child:IsA("BasePart") or child:IsA("MeshPart") then
-                part = child
-                break
-            end
-        end
-    end
-    return part
-end
-
-local function startDistanceTracker(txtLabel, part, baseName, bbGui)
-    task.spawn(function()
-        while part and part:IsDescendantOf(Workspace) and txtLabel and txtLabel.Parent and bbGui and bbGui.Parent do
-            local character = LocalPlayer.Character
-            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-            if rootPart then
-                local distance = (rootPart.Position - part.Position).Magnitude
-                txtLabel.Text = string.format("%s [%dm]", baseName, math.floor(distance))
-            else
-                txtLabel.Text = baseName .. " [--]"
-            end
-            task.wait(0.2)
-        end
-        if bbGui then bbGui:Destroy() end -- Очистка метки, если парт пропал
+pcall(function()
+    local success, info = pcall(function()
+        return MarketplaceService:GetProductInfo(placeId, Enum.InfoType.Asset)
     end)
+    if success and info then
+        GameTitle.Text = info.Name
+        GameThumbnail.Image = "https://roblox.com" .. info.AssetId .. "&width=150&height=150"
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    local ping = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+    local serverID = game.JobId:sub(1, 6)
+    InfoLabel.Text = string.format("Ping: %d ms\nServer: %s", ping, serverID)
+end)
+
+local function MakeButton(text, xPos, yPos, parentFrame, sizeX, sizeY)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, sizeX or 120, 0, sizeY or 30)
+    btn.Position = UDim2.new(0, xPos, 0, yPos)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextScaled = true
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    btn.Parent = parentFrame or MainFrame
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = btn
+
+    return btn
 end
 
-local function applyESP(block)
-    local cleanName = string.lower(block.Name)
-    local config = ConfiguredBlocks[cleanName]
-    if not config then return end
+-- Кнопки изначального скрипта (смещены ниже под инфо-панель)
+local AutoRebirth = MakeButton("Auto Rebirth", 20, 100)
+local AutoMine = MakeButton("Auto Mine", 150, 100)
+local DupeButton = MakeButton("Dupe", 20, 140)
+local BoostFPS = MakeButton("Boost FPS", 150, 140)
 
-    local part = getValidPart(block)
-    if not part then return end
+-- Дополнительные кнопки навигации списков (ESP и WIKI)
+local EspListBtn = MakeButton("ESP Блоки", 20, 180)
+local WikiListBtn = MakeButton("WIKI Блоки", 150, 180)
 
-    -- Ищем старый ESP по уникальному тегу парта в контейнере CoreGui
-    local oldEsp = EspContainer:FindFirstChild("ESP_" .. block:GetDebugId())
-    if oldEsp then oldEsp:Destroy() end
+-- Кнопка управления дополнительным окном (размещена справа на высоте кнопки X)
+local SidebarToggleBtn = Instance.new("TextButton")
+SidebarToggleBtn.Size = UDim2.new(0, 25, 0, 25)
+SidebarToggleBtn.Position = UDim2.new(1, 5, 0, 5)
+SidebarToggleBtn.Text = "<<"
+SidebarToggleBtn.Font = Enum.Font.GothamBold
+SidebarToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SidebarToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+SidebarToggleBtn.Parent = MainFrame
 
-    -- Фикс: Создаем BillboardGui внутри CoreGui.EspContainer и связываем через Adornee
-    local bbGui = Instance.new("BillboardGui", EspContainer)
-    bbGui.Name = "ESP_" .. block:GetDebugId()
-    bbGui.Adornee = part
-    bbGui.AlwaysOnTop = true
-    bbGui.Size = UDim2.new(0, 140, 0, 30)
-    bbGui.ExtentsOffset = Vector3.new(0, 2, 0)
+local SideCorner = Instance.new("UICorner")
+SideCorner.CornerRadius = UDim.new(0, 6)
+SideCorner.Parent = SidebarToggleBtn
 
-    local txt = Instance.new("TextLabel", bbGui)
-    txt.Size = UDim2.new(1, 0, 1, 0)
-    txt.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    txt.BackgroundTransparency = 0.4
-    txt.Text = config.RealName .. " [...]"
-    txt.TextColor3 = Color3.fromRGB(config.R, config.G, config.B)
-    txt.TextSize = 11
-    txt.Font = Enum.Font.SourceSansBold
-    Instance.new("UICorner", txt).CornerRadius = UDim.new(0, 4)
+-- ====================================================================
+-- ЧАСТЬ 2: ДОПОЛНИТЕЛЬНЫЕ ПАНЕЛИ, ЛОГИКА ESP И WIKI ОКН
+-- ====================================================================
+local ListFrame = Instance.new("Frame")
+ListFrame.Size = UDim2.new(0, 280, 0, 290)
+ListFrame.Position = UDim2.new(0, -290, 0, 0)
+ListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+ListFrame.BorderSizePixel = 0
+ListFrame.Parent = MainFrame
+ListFrame.Visible = false
 
-    startDistanceTracker(txt, part, config.RealName, bbGui)
-end
+local ListCorner = Instance.new("UICorner")
+ListCorner.CornerRadius = UDim.new(0, 12)
+ListCorner.Parent = ListFrame
 
--- ФУНКЦИЯ ГЕНЕРАЦИИ ОКНА ДЛЯ КНОПКИ "WHERE"
-local function createWhereWindow(oreName, locations)
-    -- Проверяем, нет ли уже открытого окна для этой руды
-    local existing = ScreenGui:FindFirstChild("Where_" .. string.lower(oreName))
-    if existing then existing:Destroy() end
+local ListStroke = Instance.new("UIStroke")
+ListStroke.Color = Color3.fromRGB(0, 170, 255)
+ListStroke.Thickness = 2
+ListStroke.Parent = ListFrame
 
-    local infoFrame = Instance.new("Frame", ScreenGui)
-    infoFrame.Name = "Where_" .. string.lower(oreName)
-    infoFrame.Size = UDim2.new(0, 260, 0, 180)
-    infoFrame.Position = MainFrame.Position + UDim2.new(0, 360, 0, 0) -- Спавнится правее главного меню
-    infoFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 33)
-    infoFrame.Active = true
-    infoFrame.Draggable = true
-    Instance.new("UICorner", infoFrame).CornerRadius = UDim.new(0, 8)
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(1, -20, 0, 30)
+SearchBox.Position = UDim2.new(0, 10, 0, 10)
+SearchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+SearchBox.PlaceholderText = "Поиск блока..."
+SearchBox.Font = Enum.Font.Gotham
+SearchBox.TextSize = 14
+SearchBox.Text = ""
+SearchBox.Parent = ListFrame
 
-    local infHeader = Instance.new("Frame", infoFrame)
-    infHeader.Size = UDim2.new(1, 0, 0, 35)
-    infHeader.BackgroundTransparency = 1
+local SearchCorner = Instance.new("UICorner")
+SearchCorner.CornerRadius = UDim.new(0, 6)
+SearchCorner.Parent = SearchBox
 
-    local infTitle = Instance.new("TextLabel", infHeader)
-    infTitle.Size = UDim2.new(0.6, 0, 1, 0)
-    infTitle.Position = UDim2.new(0.05, 0, 0, 0)
-    infTitle.Text = "Info: " .. oreName
-    infTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    infTitle.TextSize = 14
-    infTitle.Font = Enum.Font.SourceSansBold
-    infTitle.TextXAlignment = Enum.TextXAlignment.Left
-    infTitle.BackgroundTransparency = 1
+local ScrollingList = Instance.new("ScrollingFrame")
+ScrollingList.Size = UDim2.new(1, -20, 1, -60)
+ScrollingList.Position = UDim2.new(0, 10, 0, 50)
+ScrollingList.BackgroundTransparency = 1
+ScrollingList.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollingList.ScrollBarThickness = 4
+ScrollingList.Parent = ListFrame
 
-    -- Кнопка закрыть (Х)
-    local closeBtn = Instance.new("TextButton", infHeader)
-    closeBtn.Size = UDim2.new(0, 25, 0, 25)
-    closeBtn.Position = UDim2.new(1, -30, 0.5, -12.5)
-    closeBtn.Text = "✕"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 30)
-    closeBtn.Font = Enum.Font.SourceSansBold
-    closeBtn.TextSize = 12
-    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
-    closeBtn.MouseButton1Click:Connect(function() infoFrame:Destroy() end)
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Parent = ScrollingList
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Padding = UDim.new(0, 5)
 
-    -- Кнопка Свернуть/Развернуть (—)
-    local toggleBtn = Instance.new("TextButton", infHeader)
-    toggleBtn.Size = UDim2.new(0, 25, 0, 25)
-    toggleBtn.Position = UDim2.new(1, -60, 0.5, -12.5)
-    toggleBtn.Text = "—"
-    toggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    toggleBtn.Font = Enum.Font.SourceSansBold
-    toggleBtn.TextSize = 12
-    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 4)
+local DisplayFrame = Instance.new("Frame")
+DisplayFrame.Size = UDim2.new(0, 280, 0, 290)
+DisplayFrame.Position = UDim2.new(1, 40, 0, 0)
+DisplayFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+DisplayFrame.BorderSizePixel = 0
+DisplayFrame.Parent = MainFrame
+DisplayFrame.Visible = false
 
-    local infContent = Instance.new("ScrollingFrame", infoFrame)
-    infContent.Size = UDim2.new(0.9, 0, 1, -45)
-    infContent.Position = UDim2.new(0.05, 0, 0, 40)
-    infContent.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-    infContent.ScrollBarThickness = 4
-    Instance.new("UICorner", infContent).CornerRadius = UDim.new(0, 4)
+local DisplayCorner = Instance.new("UICorner")
+DisplayCorner.CornerRadius = UDim.new(0, 12)
+DisplayCorner.Parent = DisplayFrame
+
+local DisplayStroke = Instance.new("UIStroke")
+DisplayStroke.Color = Color3.fromRGB(0, 170, 255)
+DisplayStroke.Thickness = 2
+DisplayStroke.Parent = DisplayFrame
+
+local currentMode = "ESP" 
+
+local function getPartToApplyEsp(blockModel)
+    if not blockModel or not blockModel:IsA("Model") then return nil end
+    local cp = blockModel:FindFirstChild("ColorPart")
+    local p = blockModel:FindFirstChild("Part")
+    local b = blockModel:FindFirstChild("Base")
+    local primary = blockModel.PrimaryPart
     
-    local infList = Instance.new("UIListLayout", infContent)
-    infList.Padding = UDim.new(0, 4)
-    infList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        infContent.CanvasSize = UDim2.new(0, 0, 0, infList.AbsoluteContentSize.Y + 6)
-    end)
+    if cp and cp:IsA("BasePart") then return cp end
+    if p and p:IsA("BasePart") then return p end
+    if b and b:IsA("BasePart") then return b end
+    if primary then return primary end
+    
+    for _, child in ipairs(blockModel:GetChildren()) do
+        if child:IsA("BasePart") then return child end
+    end
+    return nil
+end
 
-    local infCollapsed = false
-    toggleBtn.MouseButton1Click:Connect(function()
-        infCollapsed = not infCollapsed
-        infContent.Visible = not infCollapsed
-        infoFrame.Size = infCollapsed and UDim2.new(0, 260, 0, 35) or UDim2.new(0, 260, 0, 180)
-        toggleBtn.Text = infCollapsed and "＋" or "—"
-    end)
+local function removeEspFromBlock(blockModel)
+    if not blockModel then return end
+    local target = getPartToApplyEsp(blockModel)
+    if target then
+        local old = target:FindFirstChild("BlockEspGui")
+        if old then old:Destroy() end
+    end
+end
 
-    -- Наполнение списка локациями
-    if locations and #locations > 0 then
-        for _, loc in ipairs(locations) do
-            local lbl = Instance.new("TextLabel", infContent)
-            lbl.Size = UDim2.new(1, -6, 0, 35)
-            lbl.BackgroundColor3 = Color3.fromRGB(35, 35, 38)
-                        lbl.Text = string.format(" %s\n World: %s | Layer: %d", loc.prettyName, loc.world, loc.layer)
-            lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
-            lbl.TextSize = 11
-            lbl.Font = Enum.Font.SourceSans
-            lbl.TextXAlignment = Enum.TextXAlignment.Left
-            Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 4)
+local function applyEspToBlock(blockModel, nameLower, config)
+    if not blockModel or not config.enabled then return end
+    local target = getPartToApplyEsp(blockModel)
+    if not target then return end
+    
+    local old = target:FindFirstChild("BlockEspGui")
+    if old then old:Destroy() end
+    
+    local bgui = Instance.new("BillboardGui")
+    bgui.Name = "BlockEspGui"
+    bgui.Size = UDim2.new(0, 16, 0, 16)
+    bgui.AlwaysOnTop = true
+    
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 1, 0)
+    f.BackgroundColor3 = config.color
+    f.Parent = bgui
+    
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1, 0)
+    c.Parent = f
+    
+    bgui.Parent = target
+end
+
+local function clearAllEspForBlock(nameLower)
+    trackedBlocks[nameLower].enabled = false
+    local blocksFolder = workspace:FindFirstChild("Blocks")
+    if blocksFolder then
+        for _, b in ipairs(blocksFolder:GetChildren()) do
+            if b.Name:lower() == nameLower then
+                removeEspFromBlock(b)
+            end
         end
+    end
+end
+
+local function applyAllEspForBlock(nameLower)
+    local config = trackedBlocks[nameLower]
+    if not config or not config.enabled then return end
+    local blocksFolder = workspace:FindFirstChild("Blocks")
+    if blocksFolder then
+        for _, b in ipairs(blocksFolder:GetChildren()) do
+            if b.Name:lower() == nameLower then
+                applyEspToBlock(b, nameLower, config)
+            end
+        end
+    end
+end
+
+local function updateDisplayWindow(nameLower)
+    for _, c in ipairs(DisplayFrame:GetChildren()) do
+        if not c:IsA("UIStroke") and not c:IsA("UICorner") then c:Destroy() end
+    end
+    
+    local data = oreToWorldMap[nameLower]
+    local pName = (data and data[1] and data[1].prettyName) or nameLower:sub(1,1):upper()..nameLower:sub(2)
+    
+    local CloseDisp = Instance.new("TextButton")
+    CloseDisp.Size = UDim2.new(0, 20, 0, 20)
+    CloseDisp.Position = UDim2.new(1, -25, 0, 5)
+    CloseDisp.Text = "X"
+    CloseDisp.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CloseDisp.BackgroundTransparency = 1
+    CloseDisp.Font = Enum.Font.GothamBold
+    CloseDisp.TextSize = 14
+    CloseDisp.Parent = DisplayFrame
+    CloseDisp.MouseButton1Click:Connect(function() DisplayFrame.Visible = false end)
+    
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(1, -30, 0, 30)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 10)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.TextSize = 16
+    TitleLabel.Text = pName
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = DisplayFrame
+
+    if currentMode == "ESP" then
+        if not trackedBlocks[nameLower] then
+            trackedBlocks[nameLower] = {enabled = false, color = Color3.fromRGB(255, 0, 0)}
+        end
+        local config = trackedBlocks[nameLower]
+        
+        local StatusBtn = MakeButton(config.enabled and "Отслеживание: ВКЛ" or "Отслеживание: ВЫКЛ", 10, 50, DisplayFrame, 260, 30)
+        StatusBtn.BackgroundColor3 = config.enabled and Color3.fromRGB(0, 180, 100) or Color3.fromRGB(180, 50, 50)
+        
+        StatusBtn.MouseButton1Click:Connect(function()
+            config.enabled = not config.enabled
+            if config.enabled then
+                StatusBtn.Text = "Отслеживание: ВКЛ"
+                StatusBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+                applyAllEspForBlock(nameLower)
+            else
+                StatusBtn.Text = "Отслеживание: ВЫКЛ"
+                StatusBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+                clearAllEspForBlock(nameLower)
+            end
+        end)
+        
+        local ColorLabel = Instance.new("TextLabel")
+        ColorLabel.Size = UDim2.new(1, -20, 0, 25)
+        ColorLabel.Position = UDim2.new(0, 10, 0, 95)
+        ColorLabel.BackgroundTransparency = 1
+        ColorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        ColorLabel.Font = Enum.Font.Gotham
+        ColorLabel.TextSize = 14
+        ColorLabel.Text = "Настройка цвета (RGB от 0 до 255):"
+        ColorLabel.TextXAlignment = Enum.TextXAlignment.Left
+        ColorLabel.Parent = DisplayFrame
+        
+        local function makeRgbBox(xPos, colorVal, labelTxt)
+            local box = Instance.new("TextBox")
+            box.Size = UDim2.new(0, 70, 0, 30)
+            box.Position = UDim2.new(0, xPos, 0, 125)
+            box.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+            box.TextColor3 = Color3.fromRGB(255, 255, 255)
+            box.Text = tostring(math.floor(colorVal * 255))
+            box.Font = Enum.Font.Gotham
+            box.TextSize = 14
+            box.Parent = DisplayFrame
+            
+            local c = Instance.new("UICorner")
+            c.CornerRadius = UDim.new(0, 6)
+            c.Parent = box
+            
+            local l = Instance.new("TextLabel")
+            l.Size = UDim2.new(0, 15, 0, 30)
+            l.Position = UDim2.new(0, xPos - 18, 0, 125)
+            l.BackgroundTransparency = 1
+            l.TextColor3 = Color3.fromRGB(255, 255, 255)
+            l.Text = labelTxt
+            l.Font = Enum.Font.GothamBold
+            l.TextSize = 12
+            l.Parent = DisplayFrame
+            
+            return box
+        end
+        
+        local rBox = makeRgbBox(28, config.color.R, "R")
+        local gBox = makeRgbBox(116, config.color.G, "G")
+        local bBox = makeRgbBox(204, config.color.B, "B")
+        
+        local SaveColorBtn = MakeButton("Применить Цвет", 10, 170, DisplayFrame, 260, 30)
+        SaveColorBtn.MouseButton1Click:Connect(function()
+            local r = tonumber(rBox.Text) or 255
+            local g = tonumber(gBox.Text) or 0
+            local b = tonumber(bBox.Text) or 0
+            config.color = Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
+            if config.enabled then
+                applyAllEspForBlock(nameLower)
+            end
+        end)
+    elseif currentMode == "WIKI" then
+        local InfoScroll = Instance.new("ScrollingFrame")
+        InfoScroll.Size = UDim2.new(1, -20, 1, -50)
+        InfoScroll.Position = UDim2.new(0, 10, 0, 45)
+        InfoScroll.BackgroundTransparency = 1
+        InfoScroll.ScrollBarThickness = 3
+        InfoScroll.Parent = DisplayFrame
+        
+        local scrollLayout = Instance.new("UIListLayout")
+        scrollLayout.Padding = UDim.new(0, 5)
+        scrollLayout.Parent = InfoScroll
+        
+        if data then
+            for _, info in ipairs(data) do
+                local ItemLabel = Instance.new("TextLabel")
+-- ====================================================================
+-- ЧАСТЬ 3: ЗАВЕРШЕНИЕ РЕНДЕРИНГА WIKI И ЛОГИКА ОТСЛЕЖИВАНИЯ БЛОКОВ
+-- ====================================================================
+                local ItemLabel = Instance.new("TextLabel")
+                ItemLabel.Size = UDim2.new(1, 0, 0, 40)
+                ItemLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                ItemLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                ItemLabel.Font = Enum.Font.Gotham
+                ItemLabel.TextSize = 13
+                ItemLabel.Text = string.format("Мир: %s\nСлой: %d", info.world, info.layer)
+                ItemLabel.Parent = InfoScroll
+                
+                local ic = Instance.new("UICorner")
+                ic.CornerRadius = UDim.new(0, 6)
+                ic.Parent = ItemLabel
+            end
+            InfoScroll.CanvasSize = UDim2.new(0, 0, 0, #data * 45)
+        else
+            local NoData = Instance.new("TextLabel")
+            NoData.Size = UDim2.new(1, 0, 0, 30)
+            NoData.BackgroundTransparency = 1
+            NoData.TextColor3 = Color3.fromRGB(150, 150, 150)
+            NoData.Font = Enum.Font.Gotham
+            NoData.TextSize = 13
+            NoData.Text = "Данные о мире отсутствуют."
+            NoData.Parent = InfoScroll
+        end
+    end
+    DisplayFrame.Visible = true
+end
+
+local function populateList()
+    for _, item in ipairs(ScrollingList:GetChildren()) do
+        if not item:IsA("UIListLayout") then item:Destroy() end
+    end
+    
+    local counts = {}
+    local blocksFolder = workspace:FindFirstChild("Blocks")
+    if blocksFolder then
+        for _, b in ipairs(blocksFolder:GetChildren()) do
+            local nameL = b.Name:lower()
+            counts[nameL] = (counts[nameL] or 0) + 1
+        end
+    end
+    
+    local sortedList = {}
+    for nameLower, info in pairs(oreToWorldMap) do
+        table.insert(sortedList, nameLower)
+    end
+    table.sort(sortedList)
+    
+    local filter = SearchBox.Text:lower()
+    local index = 0
+    
+    for _, nameL in ipairs(sortedList) do
+        local data = oreToWorldMap[nameL]
+        local prettyName = (data and data[1] and data[1].prettyName) or nameL:sub(1,1):upper()..nameL:sub(2)
+        local count = counts[nameL] or 0
+        
+        if filter == "" or prettyName:lower():find(filter) or nameL:find(filter) then
+            index = index + 1
+            
+            local ItemBtn = Instance.new("TextButton")
+            ItemBtn.Size = UDim2.new(1, -5, 0, 30)
+            ItemBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            ItemBtn.TextColor3 = count > 0 and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(120, 120, 120)
+            ItemBtn.Font = Enum.Font.Gotham
+            ItemBtn.TextSize = 13
+            ItemBtn.Text = string.format("  %s (%d)", prettyName, count)
+            ItemBtn.TextXAlignment = Enum.TextXAlignment.Left
+            ItemBtn.Parent = ScrollingList
+            
+            local ic = Instance.new("UICorner")
+            ic.CornerRadius = UDim.new(0, 6)
+            ic.Parent = ItemBtn
+            
+            ItemBtn.MouseButton1Click:Connect(function()
+                updateDisplayWindow(nameL)
+            end)
+        end
+    end
+    ScrollingList.CanvasSize = UDim2.new(0, 0, 0, index * 35)
+end
+
+SearchBox:GetPropertyChangedSignal("Text"):Connect(populateList)
+
+task.spawn(function()
+    while task.wait(3) do
+        if ListFrame.Visible then
+            populateList()
+        end
+    end
+end)
+
+local bFolder = workspace:WaitForChild("Blocks")
+bFolder.ChildAdded:Connect(function(child)
+    task.wait()
+    local nLower = child.Name:lower()
+    local config = trackedBlocks[nLower]
+    if config and config.enabled then
+        applyEspToBlock(child, nLower, config)
+    end
+end)
+
+EspListBtn.MouseButton1Click:Connect(function()
+    currentMode = "ESP"
+    ListFrame.Visible = true
+    populateList()
+end)
+
+WikiListBtn.MouseButton1Click:Connect(function()
+    currentMode = "WIKI"
+    ListFrame.Visible = true
+    populateList()
+end)
+
+SidebarToggleBtn.MouseButton1Click:Connect(function()
+    if SidebarToggleBtn.Text == "<<" then
+        SidebarToggleBtn.Text = ">>"
+        DisplayFrame.Visible = false
+        ListFrame.Visible = false
+        SidebarToggleBtn.Position = UDim2.new(1, -30, 0, 5)
     else
-        local lbl = Instance.new("TextLabel", infContent)
-        lbl.Size = UDim2.new(1, -6, 0, 30)
-        lbl.Text = " Block not found in database."
-        lbl.TextColor3 = Color3.fromRGB(255, 100, 100)
-        lbl.TextSize = 11
-        lbl.Font = Enum.Font.SourceSans
-        lbl.BackgroundTransparency = 1
+        SidebarToggleBtn.Text = "<<"
+        SidebarToggleBtn.Position = UDim2.new(1, 5, 0, 5)
     end
-end
-local function createBlockWindow()
-    local itemFrame = Instance.new("Frame", ScrollFrame)
-    itemFrame.Size = UDim2.new(1, -10, 0, 55)
-    itemFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
-
-    local nameBox = Instance.new("TextBox", itemFrame)
-    nameBox.Size = UDim2.new(0.45, 0, 0, 22)
-    nameBox.Position = UDim2.new(0.03, 0, 0, 5)
-    nameBox.Text = "stone"
-    nameBox.PlaceholderText = "Ore Name"
-    nameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    nameBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    nameBox.TextSize = 12
-    nameBox.Font = Enum.Font.SourceSans
-    Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0, 4)
-
-    local function addRGBInput(pos, def, ph)
-        local box = Instance.new("TextBox", itemFrame)
-        box.Size = UDim2.new(0.13, 0, 0, 22)
-        box.Position = pos
-        box.Text = def
-        box.PlaceholderText = ph
-        box.TextColor3 = Color3.fromRGB(255, 255, 255)
-        box.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        box.TextSize = 11
-        box.Font = Enum.Font.SourceSans
-        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-        return box
-    end
-
-    local rBox = addRGBInput(UDim2.new(0.52, 0, 0, 5), "255", "R")
-    local gBox = addRGBInput(UDim2.new(0.67, 0, 0, 5), "255", "G")
-    local bBox = addRGBInput(UDim2.new(0.82, 0, 0, 5), "255", "B")
-
-    local whereBtn = Instance.new("TextButton", itemFrame)
-    whereBtn.Size = UDim2.new(0.45, 0, 0, 20)
-    whereBtn.Position = UDim2.new(0.03, 0, 0, 30)
-    whereBtn.Text = "📍 Where?"
-    whereBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    whereBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    whereBtn.TextSize = 11
-    whereBtn.Font = Enum.Font.SourceSansBold
-    Instance.new("UICorner", whereBtn).CornerRadius = UDim.new(0, 4)
-
-    local currentKey = "stone"
-
-    local function updateData()
-        if ConfiguredBlocks[currentKey] then ConfiguredBlocks[currentKey] = nil end
-        local cleanName = string.lower(string.gsub(nameBox.Text, "^%s*(.-)%s*$", "%1"))
-        currentKey = cleanName
-
-        ConfiguredBlocks[cleanName] = {
-            RealName = nameBox.Text,
-            R = tonumber(rBox.Text) or 255,
-            G = tonumber(gBox.Text) or 255,
-            B = tonumber(bBox.Text) or 255
-        }
-    end
-
-    nameBox:GetPropertyChangedSignal("Text"):Connect(updateData)
-    rBox:GetPropertyChangedSignal("Text"):Connect(updateData)
-    gBox:GetPropertyChangedSignal("Text"):Connect(updateData)
-    bBox:GetPropertyChangedSignal("Text"):Connect(updateData)
-    updateData()
-
-    whereBtn.MouseButton1Click:Connect(function()
-        local searchKey = string.lower(string.gsub(nameBox.Text, "^%s*(.-)%s*$", "%1"))
-        local data = oreToWorldMap[searchKey]
-        createWhereWindow(nameBox.Text, data)
-    end)
-end
-
-AddBtn.MouseButton1Click:Connect(function() createBlockWindow() end)
-SearchBtn.MouseButton1Click:Connect(function()
-    for _, block in ipairs(BlocksFolder:GetChildren()) do applyESP(block) end
 end)
 
-BlocksFolder.ChildAdded:Connect(function(newBlock)
-    task.wait(0.2)
-    applyESP(newBlock)
+CloseButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    OpenButton.Visible = true
 end)
 
-createBlockWindow()
+OpenButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    OpenButton.Visible = false
+end)
